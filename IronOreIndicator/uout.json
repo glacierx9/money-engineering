@@ -1,0 +1,69 @@
+{
+  "private": {
+    "markets": [
+      "DCE"
+    ],
+    "security_categories": [
+      [
+        1,
+        2,
+        3
+      ]
+    ],
+    "securities": [
+      [
+        "i"
+      ]
+    ],
+    "sample_granularities": {
+      "type": "min",
+      "cycles": [
+        900
+      ],
+      "cycle_lengths": [
+        0
+      ]
+    },
+    "export": {
+      "XXX": {
+        "fields": [
+          "_preserved_field",
+          "bar_index",
+          "indicator_value",
+          "signal"
+        ],
+        "defs": [
+          {
+            "field_type": "int64",
+            "display_name": "Preserved Field",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Bar Index",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Indicator Value",
+            "precision": 6,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Signal",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          }
+        ],
+        "revision": -1
+      }
+    }
+  }
+}

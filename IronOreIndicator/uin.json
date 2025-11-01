@@ -1,0 +1,35 @@
+{
+  "global": {
+    "imports": {
+      "SampleQuote": {
+        "fields": [
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "turnover"
+        ],
+        "granularities": [
+          900
+        ],
+        "revision": 4294967295,
+        "markets": [
+          "DCE"
+        ],
+        "security_categories": [
+          [
+            1,
+            2,
+            3
+          ]
+        ],
+        "securities": [
+          [
+            "i"
+          ]
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+    "name": "wos-ironoreindicator",
+    "image": "glacierx/wos-prod-arm64",
+    "remoteUser": "wolverine",
+    "runArgs": [
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined"
+    ],
+    "appPort": [],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/bin/python3",
+                "python.linting.enabled": true,
+                "python.linting.pylintEnabled": false
+            }
+        }
+    },
+    "postCreateCommand": "echo 'IronOreIndicator development environment ready!'",
+    "remoteEnv": {
+        "PYTHONPATH": "/home/wolverine/bin/running:${containerEnv:PYTHONPATH}"
+    }
+}
