@@ -7,7 +7,7 @@
 - Use VSCode debug configurations
 - Validate strategy performance
 
-**Previous:** [05 - Singularity](05-singularity.md) | **Next:** [07 - Tier 1 Indicator](07-tier1-indicator.md)
+**Previous:** [05 - Stateless Design](05-stateless-design.md) | **Next:** [07 - Tier 1 Indicator](07-tier1-indicator.md)
 
 ---
 
@@ -415,4 +415,4 @@ In the next chapter, we'll build a complete Tier 1 indicator from scratch, apply
 
 ---
 
-**Previous:** [05 - Singularity](05-singularity.md) | **Next:** [07 - Tier 1 Indicator](07-tier1-indicator.md)
+**Previous:** [05 - Stateless Design](05-stateless-design.md) | **Next:** [07 - Tier 1 Indicator](07-tier1-indicator.md)

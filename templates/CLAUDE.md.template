@@ -1,0 +1,145 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code when working on the {{NAME}} project.
+
+## Project Overview
+
+**Project**: {{NAME}}
+**Type**: {{TYPE}}
+**Markets**: {{MARKETS}}
+**Securities**: {{SECURITIES}}
+**Granularities**: {{GRANULARITIES}}
+
+TODO: Add detailed description of what this {{TYPE}} does
+
+## Implementation Status
+
+- [ ] Basic structure created
+- [ ] Indicator logic implemented
+- [ ] Quick test passing
+- [ ] Replay consistency test passing
+- [ ] Visualization script created
+- [ ] Parameters optimized
+- [ ] Full backtest completed
+- [ ] Ready for production
+
+## Key Implementation Details
+
+### Input Configuration (uin.json)
+
+Currently configured to import:
+- SampleQuote (OHLCV data) from markets: {{MARKETS}}
+- Granularities: {{GRANULARITIES}}
+
+TODO: Document any additional imports
+
+### Output Configuration (uout.json)
+
+Currently exports:
+- _preserved_field (required framework field)
+- bar_index (counter)
+- indicator_value (main indicator value)
+- signal (trading signal: -1, 0, 1)
+
+TODO: Document additional output fields as you add them
+
+### Algorithm Description
+
+TODO: Describe your indicator/strategy algorithm in detail
+
+**Methodology:**
+1. TODO: Step 1
+2. TODO: Step 2
+3. TODO: Step 3
+
+**Parameters:**
+TODO: List all tunable parameters and their current values
+
+### State Management
+
+This {{TYPE}} maintains the following state:
+- bar_index: Bar counter
+- timetag: Current cycle timestamp
+- TODO: Add other state variables
+
+All state is automatically persisted via sv_object.
+
+## Critical Framework Rules
+
+### ✅ Always Follow These Doctrines
+
+1. **Multiple Indicator Objects**: Separate instances per commodity
+2. **No Fallback Logic**: Trust dependency data format
+3. **Always Return List**: Framework callbacks return lists
+4. **Logical Contract Filtering**: Only process contracts ending in <00>
+5. **Code Format Convention**: DCE/SHFE lowercase, CZCE UPPERCASE
+
+## Development Workflow
+
+### Running Tests
+
+```bash
+# Quick test (7 days)
+# Press F5 in VS Code, select "{{NAME}} - Quick Test"
+
+# Replay consistency (MANDATORY before production)
+python test_resuming_mode.py
+
+# Full backtest
+# Press F5, select "{{NAME}} - Full Backtest"
+```
+
+### Debugging
+
+Set breakpoints in {{NAME}}.py:
+- `on_bar()`: Check data arrival
+- `_on_cycle_pass()`: Check calculations
+- `ready_to_serialize()`: Check output control
+
+### Visualization
+
+TODO: Create visualization script once indicator is working
+```bash
+python {{NAME_LOWER}}_viz.py
+```
+
+## Current TODOs
+
+High Priority:
+- [ ] TODO: Implement core indicator logic in _on_cycle_pass()
+- [ ] TODO: Add proper signal generation logic
+- [ ] TODO: Test with quick backtest
+- [ ] TODO: Create visualization script
+
+Medium Priority:
+- [ ] TODO: Optimize parameters
+- [ ] TODO: Add multi-timeframe support if needed
+- [ ] TODO: Run full backtest
+
+Low Priority:
+- [ ] TODO: Documentation improvements
+- [ ] TODO: Performance optimizations
+
+## Notes for Claude Code
+
+When working on this project:
+
+1. **Always check uin.json and uout.json** for configuration
+2. **Follow the sv_object pattern** for state management
+3. **Use online algorithms** (EMA, not rolling windows)
+4. **Ensure replay consistency** (no random values, no system time)
+5. **Filter for logical contracts** (`code.endswith(b'<00>')`)
+6. **Return lists** from all framework callbacks
+7. **Trust dependency data** (no fallback values)
+
+## Resources
+
+- **Framework Documentation**: ./wos/ (complete WOS knowledge base)
+- **Working Examples**: Check parent egg directory for Margarita examples
+- **Visualization Guide**: ./wos/10-visualization.md
+- **Testing Guide**: ./wos/06-backtest.md
+- **Quick Reference**: ./wos/INDEX.md
+
+---
+
+Last Updated: {{TODAY}}

@@ -1,0 +1,76 @@
+# {{NAME}}
+
+TODO: Add project description
+
+## Overview
+
+**Type**: {{TYPE}}
+**Markets**: {{MARKETS}}
+
+**Securities**:
+{{SECURITIES}}
+
+## Quick Start
+
+### Running Tests
+
+```bash
+# Quick test (7 days)
+python /home/wolverine/bin/running/calculator3_test.py \
+    --testcase . \
+    --algoname {{NAME}} \
+    --sourcefile {{NAME}}.py \
+    --start 20250703203204 \
+    --end 20250710203204 \
+    --granularity 900 \
+    --tm wss://10.99.100.116:4433/tm \
+    --tm-master 10.99.100.116:6102 \
+    --rails https://10.99.100.116:4433/private-api/ \
+    --token YOUR_TOKEN \
+    --category 1 \
+    --is-managed 1 \
+    --restore-length 864000000 \
+    --multiproc 1
+
+# Or use VS Code debugger (F5)
+```
+
+### Replay Consistency Test
+
+```bash
+python test_resuming_mode.py
+```
+
+## Project Structure
+
+```
+{{NAME}}/
+├── {{NAME}}.py                  # Main implementation
+├── uin.json                   # Input configuration
+├── uout.json                  # Output configuration
+├── test_resuming_mode.py      # Replay consistency test
+├── CLAUDE.md                  # Claude Code guidance
+├── README.md                  # This file
+├── .vscode/
+│   └── launch.json           # Debug configurations
+└── .devcontainer/
+    └── devcontainer.json     # Container configuration
+```
+
+## Development
+
+See CLAUDE.md for detailed development guidance.
+
+## Resources
+
+- **WOS Documentation**: ./wos/ (complete framework guide, 12 chapters)
+- **Quick Reference**: ./wos/INDEX.md
+- **CLAUDE.md**: Project-specific AI guidance
+- **Working Examples**: Check parent egg directory for Margarita examples
+
+### Key Documentation
+
+- [Chapter 07: Tier-1 Indicator](./wos/07-tier1-indicator.md) - Start here!
+- [Chapter 06: Backtest](./wos/06-backtest.md) - Testing guide
+- [Chapter 10: Visualization](./wos/10-visualization.md) - Analysis tools
+- [Chapter 02: uin/uout](./wos/02-uin-and-uout.md) - Configuration reference

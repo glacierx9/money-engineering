@@ -12,7 +12,7 @@ Successfully created complete Wolverine Operating System (WOS) documentation com
 2. **02-uin-and-uout.md** (694 lines) - Configuration files and data dependencies
 3. **03-programming-basics-and-cli.md** (934 lines) - Base classes, CLI, and module structure
 4. **04-structvalue-and-sv_object.md** (796 lines) - Data containers and serialization
-5. **05-singularity.md** (800+ lines) - Stateless design and replay consistency
+5. **05-stateless-design.md** (800+ lines) - Stateless design and replay consistency
 6. **06-backtest.md** (450+ lines) - Testing and validation workflows
 7. **07-tier1-indicator.md** (550+ lines) - Building technical indicators
 8. **08-tier2-composite.md** (450+ lines) - Portfolio management strategies

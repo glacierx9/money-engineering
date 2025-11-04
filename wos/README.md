@@ -10,7 +10,7 @@ Complete guide to the Wolverine algorithmic trading framework.
 2. **[uin.json and uout.json](02-uin-and-uout.md)** - Data configuration and dependencies
 3. **[Programming Basics and CLI](03-programming-basics-and-cli.md)** - Base classes, module structure, and calculator3_test.py
 4. **[StructValue and sv_object](04-structvalue-and-sv_object.md)** - Data containers and automatic serialization
-5. **[Singularity (Stateless Design)](05-singularity.md)** - Replay consistency and online algorithms
+5. **[Stateless Design and State Management](05-stateless-design.md)** - Replay consistency and online algorithms
 6. **[Backtest and Testing](06-backtest.md)** - Running backtests and validation
 
 ### Part II: Implementation (Chapters 7-9)

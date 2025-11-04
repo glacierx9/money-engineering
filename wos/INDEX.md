@@ -29,10 +29,10 @@ Quick reference index for the Wolverine Operating System documentation.
 - [Metadata Management](04-structvalue-and-sv_object.md#metadata-management) - Schema handling
 
 ### Stateless Design
-- [Singularity Concept](05-singularity.md#overview) - Why stateless matters
-- [Online Algorithms](05-singularity.md#online-algorithms) - EMA, Welford's, ATR
-- [Bounded Memory](05-singularity.md#stateless-design-principles) - Using deque
-- [Replay Consistency](05-singularity.md#replay-consistency) - Testing determinism
+- [Stateless Design Concept](05-stateless-design.md#overview) - Why stateless matters
+- [Online Algorithms](05-stateless-design.md#online-algorithms) - EMA, Welford's, ATR
+- [Bounded Memory](05-stateless-design.md#stateless-design-principles) - Using deque
+- [Replay Consistency](05-stateless-design.md#replay-consistency) - Testing determinism
 
 ### Testing
 - [Quick Test](06-backtest.md#quick-test-7-day-run) - 7-day testing
@@ -100,7 +100,7 @@ Quick reference index for the Wolverine Operating System documentation.
 
 ### pycaitlynutils3 (pcu3)
 - [Logger](03-programming-basics-and-cli.md#logging-best-practices)
-- [Timestamp parsing](05-singularity.md#practical-example-stateless-indicator)
+- [Timestamp parsing](05-stateless-design.md#practical-example-stateless-indicator)
 
 ## By Skill Level
 
@@ -112,12 +112,12 @@ Quick reference index for the Wolverine Operating System documentation.
 
 ### Intermediate
 1. [StructValue](04-structvalue-and-sv_object.md) - Master data flow
-2. [Stateless Design](05-singularity.md) - Implement online algorithms
+2. [Stateless Design](05-stateless-design.md) - Implement online algorithms
 3. [Multi-Commodity](07-tier1-indicator.md#multi-commodity-pattern) - Handle multiple instruments
 4. [Composite Strategy](08-tier2-composite.md) - Build portfolio manager
 
 ### Advanced
-1. [Replay Consistency](05-singularity.md#replay-consistency) - Perfect determinism
+1. [Replay Consistency](05-stateless-design.md#replay-consistency) - Perfect determinism
 2. [Optimization](11-fine-tune-and-iterate.md) - Parameter tuning
 3. [Tier 3 Execution](09-tier3-strategy.md) - Live trading
 4. [Production Deployment](12-example-project.md#phase-5-production-deployment) - Go live
@@ -131,14 +131,14 @@ Quick reference index for the Wolverine Operating System documentation.
 4. [Logical Contracts Only](07-tier1-indicator.md#best-practices) - Filter `<00>` contracts
 
 ### Design Patterns
-- [Online Algorithms](05-singularity.md#online-algorithms) - Bounded memory
+- [Online Algorithms](05-stateless-design.md#online-algorithms) - Bounded memory
 - [Cycle Boundaries](07-tier1-indicator.md#cycle-boundary-handling) - Time management
 - [Signal Aggregation](08-tier2-composite.md#signal-aggregation) - Combining signals
-- [State Persistence](05-singularity.md#state-persistence-patterns) - Serialization
+- [State Persistence](05-stateless-design.md#state-persistence-patterns) - Serialization
 
 ### Best Practices
-- [Bounded Collections](05-singularity.md#principle-1-bounded-memory) - Use deque
-- [Deterministic Computation](05-singularity.md#principle-4-deterministic-computation) - No randomness
+- [Bounded Collections](05-stateless-design.md#principle-1-bounded-memory) - Use deque
+- [Deterministic Computation](05-stateless-design.md#principle-4-deterministic-computation) - No randomness
 - [Trust Dependency Data](04-structvalue-and-sv_object.md#accessing-field-values) - No fallbacks
 - [Test Replay Consistency](06-backtest.md#replay-consistency-test) - Validate determinism
 
@@ -148,12 +148,12 @@ Quick reference index for the Wolverine Operating System documentation.
 - [No Output Generated](06-backtest.md#issue-1-no-output-generated)
 - [Replay Test Fails](06-backtest.md#issue-2-replay-test-fails)
 - [Memory Growth](06-backtest.md#issue-3-memory-growth)
-- [Non-Determinism](05-singularity.md#issue-2-non-determinism)
+- [Non-Determinism](05-stateless-design.md#issue-2-non-determinism)
 
 ### Solutions
-- [Growing Memory](05-singularity.md#issue-1-growing-memory)
-- [External State](05-singularity.md#issue-3-external-state)
-- [Incomplete Persistence](05-singularity.md#issue-4-incomplete-persistence)
+- [Growing Memory](05-stateless-design.md#issue-1-growing-memory)
+- [External State](05-stateless-design.md#issue-3-external-state)
+- [Incomplete Persistence](05-stateless-design.md#issue-4-incomplete-persistence)
 - [Signal Issues](11-fine-tune-and-iterate.md#identifying-common-issues)
 
 ## Quick Reference

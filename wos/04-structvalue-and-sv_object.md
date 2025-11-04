@@ -6,7 +6,7 @@
 - Learn metadata management and routing
 - Use from_sv() and copy_to_sv() effectively
 
-**Previous:** [03 - Programming Basics and CLI](03-programming-basics-and-cli.md) | **Next:** [05 - Singularity (Stateless Design)](05-singularity.md)
+**Previous:** [03 - Programming Basics and CLI](03-programming-basics-and-cli.md) | **Next:** [05 - Stateless Design](05-stateless-design.md)
 
 ---
 
@@ -766,6 +766,215 @@ def on_bar(self, bar):
     self.code = bar.get_stock_code()  # WRONG!
 ```
 
+### 🔄 Advanced Pattern: Vector-to-Scalar Serialization
+
+**Critical Concept:** When using lists/vectors internally but storing as separate scalar fields in uout.json.
+
+**The Challenge:**
+
+You might calculate similar values with different parameters using a vector:
+```python
+# Internal representation - convenient for calculations
+self.ema_values: List[float] = [0.0] * 5  # 5 different EMA periods
+```
+
+But uout.json defines them as separate fields:
+```json
+{
+  "fields": ["ema_1", "ema_2", "ema_3", "ema_4", "ema_5"],
+  "defs": [
+    {"field_type": "double", "precision": 6},
+    {"field_type": "double", "precision": 6},
+    {"field_type": "double", "precision": 6},
+    {"field_type": "double", "precision": 6},
+    {"field_type": "double", "precision": 6}
+  ]
+}
+```
+
+**The Solution: Custom Serialization**
+
+You **MUST** override `copy_to_sv()` and `from_sv()` to handle the conversion:
+
+```python
+class MultiPeriodIndicator(pcts3.sv_object):
+    """Indicator with multiple periods calculated via vector"""
+
+    def __init__(self):
+        super().__init__()
+        self.meta_name = "MultiPeriodIndicator"
+        self.namespace = pc.namespace_private
+        self.revision = (1 << 32) - 1
+
+        # Internal vector representation (for calculation)
+        self.ema_values: List[float] = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.periods = [10, 20, 50, 100, 200]
+
+        # Scalar fields for serialization (match uout.json)
+        self.ema_1 = 0.0
+        self.ema_2 = 0.0
+        self.ema_3 = 0.0
+        self.ema_4 = 0.0
+        self.ema_5 = 0.0
+
+    def _calculate_emas(self, price: float):
+        """Update all EMA values using vector"""
+        for i, period in enumerate(self.periods):
+            alpha = 2.0 / (period + 1)
+            self.ema_values[i] = alpha * price + (1 - alpha) * self.ema_values[i]
+
+    def copy_to_sv(self) -> pc.StructValue:
+        """
+        Convert vector to scalar fields for serialization
+
+        CRITICAL: This is called when saving state
+        """
+        # Vector → Scalars (for output)
+        self.ema_1 = self.ema_values[0]
+        self.ema_2 = self.ema_values[1]
+        self.ema_3 = self.ema_values[2]
+        self.ema_4 = self.ema_values[3]
+        self.ema_5 = self.ema_values[4]
+
+        # Call parent to serialize scalar fields
+        return super().copy_to_sv()
+
+    def from_sv(self, sv: pc.StructValue):
+        """
+        Reconstruct vector from scalar fields when resuming
+
+        CRITICAL: Must be inverse of copy_to_sv()
+        """
+        # Call parent to deserialize scalar fields
+        super().from_sv(sv)
+
+        # Scalars → Vector (reconstruct internal state)
+        self.ema_values[0] = self.ema_1
+        self.ema_values[1] = self.ema_2
+        self.ema_values[2] = self.ema_3
+        self.ema_values[3] = self.ema_4
+        self.ema_values[4] = self.ema_5
+```
+
+**Why This Matters:**
+
+1. **Replay Consistency**: When framework resumes from midpoint:
+   - It deserializes using `from_sv()`
+   - Your internal vector MUST be correctly reconstructed
+   - Otherwise calculations will be wrong
+
+2. **State Persistence**: Every cycle:
+   - Framework calls `copy_to_sv()` to save state
+   - Your scalars must match current vector values
+   - Otherwise state is lost
+
+3. **Inverse Requirement**:
+   ```python
+   # This MUST be true:
+   obj1.copy_to_sv()  # Vector → Scalars
+   sv = obj1.copy_to_sv()
+   obj2.from_sv(sv)   # Scalars → Vector
+   # obj2.ema_values == obj1.ema_values  # MUST be equal!
+   ```
+
+**Complete Example:**
+
+```python
+def on_bar(self, bar: pc.StructValue) -> List[pc.StructValue]:
+    ret = []
+
+    market = bar.get_market()
+    code = bar.get_stock_code()
+    ns = bar.get_namespace()
+    meta_id = bar.get_meta_id()
+
+    if self.sq.namespace == ns and self.sq.meta_id == meta_id:
+        if code.endswith(b'<00>'):
+            self.sq.market = market
+            self.sq.code = code
+            self.sq.granularity = bar.get_granularity()
+            self.sq.from_sv(bar)
+
+            # Calculate using internal vector
+            price = float(self.sq.close)
+            self._calculate_emas(price)  # Updates self.ema_values
+
+            # Generate signal based on vector values
+            if self.ema_values[0] > self.ema_values[1] > self.ema_values[2]:
+                self.signal = 1
+
+            # Serialize - copy_to_sv() converts vector to scalars
+            if self.ready_to_serialize():
+                ret.append(self.copy_to_sv())  # Internally: vector → scalars
+
+    return ret
+```
+
+**Testing Your Implementation:**
+
+```python
+# Test serialization round-trip
+def test_serialization():
+    obj1 = MultiPeriodIndicator()
+    obj1.initialize(imports, metas)
+
+    # Set some test values
+    obj1.ema_values = [100.5, 101.2, 102.3, 103.1, 104.5]
+
+    # Serialize
+    sv = obj1.copy_to_sv()
+
+    # Deserialize into new object
+    obj2 = MultiPeriodIndicator()
+    obj2.initialize(imports, metas)
+    obj2.from_sv(sv)
+
+    # Verify vectors match
+    assert obj1.ema_values == obj2.ema_values  # MUST pass!
+    print("✅ Serialization round-trip successful")
+```
+
+**Common Mistakes:**
+
+❌ **Forgetting to override copy_to_sv():**
+```python
+# Vector values calculated but never saved!
+def _calculate_emas(self, price):
+    self.ema_values[i] = alpha * price + (1 - alpha) * self.ema_values[i]
+# Missing: Vector → Scalars in copy_to_sv()
+# Result: All EMA fields output as 0.0
+```
+
+❌ **Forgetting to override from_sv():**
+```python
+# Scalars loaded but vector not reconstructed!
+# Result: Calculations use stale vector values on resume
+```
+
+❌ **Asymmetric conversion:**
+```python
+def copy_to_sv(self):
+    self.ema_1 = self.ema_values[0]
+    self.ema_2 = self.ema_values[1]
+    # Missing ema_3, ema_4, ema_5!
+    return super().copy_to_sv()
+
+def from_sv(self, sv):
+    super().from_sv(sv)
+    self.ema_values[0] = self.ema_1
+    self.ema_values[1] = self.ema_2
+    self.ema_values[2] = self.ema_3  # Loaded but never saved!
+    self.ema_values[3] = self.ema_4  # Loaded but never saved!
+    self.ema_values[4] = self.ema_5  # Loaded but never saved!
+# Result: Replay inconsistency - different values on resume!
+```
+
+**Key Principle:**
+
+> **from_sv() must be the exact inverse of copy_to_sv()**
+>
+> Any transformation applied in copy_to_sv() must be reversed in from_sv()
+
 ## Summary
 
 This chapter covered:
@@ -776,7 +985,8 @@ This chapter covered:
 4. **from_sv()**: Loading state from StructValue
 5. **copy_to_sv()**: Saving state to StructValue
 6. **Multiple sv_objects**: Parser pattern for different data types
-7. **Best Practices**: Trust data, set metadata, separate parsers
+7. **Vector-to-Scalar Serialization**: Custom copy_to_sv()/from_sv() for internal vectors
+8. **Best Practices**: Trust data, set metadata, separate parsers
 
 **Key Takeaways:**
 
@@ -786,6 +996,8 @@ This chapter covered:
 - Trust dependency data - no fallback logic
 - Use separate sv_objects for different data types
 - Initialize all sv_objects with load_def_from_dict()
+- **CRITICAL**: Override copy_to_sv() and from_sv() when using vectors internally
+- **CRITICAL**: from_sv() must be the exact inverse of copy_to_sv()
 
 **Next Steps:**
 
@@ -793,4 +1005,4 @@ In the next chapter, we'll explore the Singularity principle - designing statele
 
 ---
 
-**Previous:** [03 - Programming Basics and CLI](03-programming-basics-and-cli.md) | **Next:** [05 - Singularity (Stateless Design)](05-singularity.md)
+**Previous:** [03 - Programming Basics and CLI](03-programming-basics-and-cli.md) | **Next:** [05 - Stateless Design](05-stateless-design.md)

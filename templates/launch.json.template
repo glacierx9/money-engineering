@@ -1,0 +1,80 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "{{NAME}} - Quick Test",
+            "type": "debugpy",
+            "request": "launch",
+            "stopOnEntry": false,
+            "python": "python",
+            "program": "/home/wolverine/bin/running/calculator3_test.py",
+            "args": [
+                "--testcase", "${workspaceFolder}/",
+                "--algoname", "{{NAME}}",
+                "--sourcefile", "{{NAME}}.py",
+                "--start", "20250703203204",
+                "--end", "20250710203204",
+                "--granularity", "{{GRANULARITY}}",
+                "--tm", "wss://10.99.100.116:4433/tm",
+                "--tm-master", "10.99.100.116:6102",
+                "--rails", "https://10.99.100.116:4433/private-api/",
+                "--token", "{{TOKEN}}",
+                "--category", "{{CATEGORY}}",
+                "--is-managed", "1",
+                "--restore-length", "864000000",
+                "--multiproc", "1"
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "~/.env",
+            "env": {
+                "PYTHONPATH": "/home/wolverine/bin/running:${env:PYTHONPATH}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "{{NAME}} - Full Backtest",
+            "type": "debugpy",
+            "request": "launch",
+            "stopOnEntry": false,
+            "python": "python",
+            "program": "/home/wolverine/bin/running/calculator3_test.py",
+            "args": [
+                "--testcase", "${workspaceFolder}/",
+                "--algoname", "{{NAME}}",
+                "--sourcefile", "{{NAME}}.py",
+                "--start", "20230101000000",
+                "--end", "20250131000000",
+                "--granularity", "{{GRANULARITY}}",
+                "--tm", "wss://10.99.100.116:4433/tm",
+                "--tm-master", "10.99.100.116:6102",
+                "--rails", "https://10.99.100.116:4433/private-api/",
+                "--token", "{{TOKEN}}",
+                "--category", "{{CATEGORY}}",
+                "--is-managed", "1",
+                "--restore-length", "864000000",
+                "--multiproc", "1"
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "~/.env",
+            "env": {
+                "PYTHONPATH": "/home/wolverine/bin/running:${env:PYTHONPATH}"
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "{{NAME}} - Test Resuming Mode",
+            "type": "debugpy",
+            "request": "launch",
+            "stopOnEntry": false,
+            "python": "python",
+            "program": "${workspaceFolder}/test_resuming_mode.py",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "envFile": "~/.env",
+            "env": {
+                "PYTHONPATH": "/home/wolverine/bin/running:${env:PYTHONPATH}"
+            },
+            "console": "integratedTerminal"
+        }
+    ]
+}

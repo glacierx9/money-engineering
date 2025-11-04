@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+# coding=utf-8
+"""
+{{NAME}} - Wolverine Indicator
+
+TODO: Add description of what this indicator does
+"""
+
+import pycaitlyn as pc
+import pycaitlynts3 as pcts3
+import pycaitlynutils3 as pcu3
+from typing import List
+
+# Framework configuration
+use_raw = True
+overwrite = True  # Set to False in production
+granularity = 900  # Primary granularity (15 minutes)
+max_workers = 1
+worker_no = None
+exports = {}
+imports = {}
+metas = {}
+logger = pcu3.vanilla_logger()
+
+
+class SampleQuote(pcts3.sv_object):
+    """Market data (OHLCV) from global namespace"""
+
+    def __init__(self):
+        super().__init__()
+
+        # Metadata - CONSTANTS
+        self.meta_name = "SampleQuote"
+        self.namespace = pc.namespace_global
+        self.revision = (1 << 32) - 1
+        self.granularity = 900
+
+        # OHLCV fields (automatically populated by from_sv)
+        self.open = None
+        self.high = None
+        self.low = None
+        self.close = None
+        self.volume = None
+        self.turnover = None
+
+
+class {{NAME}}(pcts3.sv_object):
+    """
+    {{NAME}} indicator implementation
+
+    TODO: Describe your indicator's purpose and methodology
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Metadata - CONSTANTS (never change during processing)
+        self.meta_name = "{{NAME}}"
+        self.namespace = pc.namespace_private
+        self.granularity = 900
+        self.market = b'{{FIRST_MARKET}}'
+        self.code = b'{{FIRST_SEC}}<00>'
+        self.revision = (1 << 32) - 1
+
+        # State variables (automatically persisted)
+        self.bar_index = 0
+        self.timetag = None
+
+        # TODO: Add your indicator fields here
+        self.indicator_value = 0.0
+        self.signal = 0
+
+        # Dependency sv_objects
+        self.sq = SampleQuote()
+
+    def initialize(self, imports, metas):
+        """Initialize schemas for all sv_objects"""
+        self.load_def_from_dict(metas)
+        self.set_global_imports(imports)
+
+        # Initialize dependencies
+        self.sq.load_def_from_dict(metas)
+        self.sq.set_global_imports(imports)
+
+    def on_bar(self, bar: pc.StructValue) -> List[pc.StructValue]:
+        """
+        Process incoming market data bars
+
+        Returns:
+            List of StructValue outputs (empty list if no output this cycle)
+        """
+        ret = []  # ALWAYS return list
+
+        # Extract metadata
+        market = bar.get_market()
+        code = bar.get_stock_code()
+        tm = bar.get_time_tag()
+        ns = bar.get_namespace()
+        meta_id = bar.get_meta_id()
+
+        # Route to appropriate sv_object
+        if self.sq.namespace == ns and self.sq.meta_id == meta_id:
+            # Filter for logical contracts only
+            if code.endswith(b'<00>'):
+                # Set metadata before from_sv
+                self.sq.market = market
+                self.sq.code = code
+                self.sq.granularity = bar.get_granularity()
+
+                # Parse data into sv_object
+                self.sq.from_sv(bar)
+
+                # Handle cycle boundaries
+                if self.timetag is None:
+                    self.timetag = tm
+
+                if self.timetag < tm:
+                    # New cycle - process previous cycle's data
+                    self._on_cycle_pass(tm)
+
+                    # Serialize state if ready
+                    if self.ready_to_serialize():
+                        ret.append(self.copy_to_sv())
+
+                    # Update for next cycle
+                    self.timetag = tm
+                    self.bar_index += 1
+
+        return ret  # ALWAYS return list
+
+    def _on_cycle_pass(self, time_tag):
+        """
+        Process cycle - implement your indicator logic here
+
+        Args:
+            time_tag: Current cycle timestamp
+        """
+        # Access parsed market data
+        current_price = float(self.sq.close)
+        current_volume = float(self.sq.volume)
+        high = float(self.sq.high)
+        low = float(self.sq.low)
+
+        # TODO: Implement your indicator calculations
+        # Example: Simple moving average calculation
+        self.indicator_value = current_price  # Replace with actual logic
+
+        # TODO: Generate signals based on indicator
+        if self.indicator_value > 0:
+            self.signal = 1  # Buy signal
+        elif self.indicator_value < 0:
+            self.signal = -1  # Sell signal
+        else:
+            self.signal = 0  # Neutral
+
+    def ready_to_serialize(self) -> bool:
+        """Determine if state should be serialized"""
+        return self.bar_index > 0  # Serialize after first bar
+
+
+# Global instance
+indicator = {{NAME}}()
+
+
+# Framework callbacks (REQUIRED)
+
+async def on_init():
+    """Initialize indicator with schemas"""
+    global indicator, imports, metas, worker_no
+    if worker_no == 1 and metas and imports:
+        indicator.initialize(imports, metas)
+
+
+async def on_bar(bar: pc.StructValue):
+    """Process incoming bars"""
+    global indicator, worker_no
+    if worker_no != 1:
+        return []
+    return indicator.on_bar(bar)
+
+
+async def on_ready():
+    """Called when framework is ready"""
+    pass
+
+
+async def on_market_open(market, tradeday, time_tag, time_string):
+    """Called on market open"""
+    pass
+
+
+async def on_market_close(market, tradeday, timetag, timestring):
+    """Called on market close"""
+    pass
+
+
+async def on_reference(market, tradeday, data, timetag, timestring):
+    """Called on reference data"""
+    pass
+
+
+async def on_tradeday_begin(market, tradeday, time_tag, time_string):
+    """Called at beginning of trade day"""
+    pass
+
+
+async def on_tradeday_end(market, tradeday, timetag, timestring):
+    """Called at end of trade day"""
+    pass

@@ -517,6 +517,110 @@ self.recent_prices = deque(maxlen=100)
 self.swing_points = deque(maxlen=50)
 ```
 
+### 5. Vector-to-Scalar Serialization for Multi-Parameter Indicators
+
+**When to Use:** If you calculate similar values with different parameters (e.g., multiple EMA periods).
+
+**The Pattern:**
+
+```python
+class MultiPeriodEMA(pcts3.sv_object):
+    """Calculate EMAs with multiple periods"""
+
+    def __init__(self):
+        super().__init__()
+        self.meta_name = "MultiPeriodEMA"
+        self.namespace = pc.namespace_private
+
+        # Internal vector (convenient for calculations)
+        self.ema_values: List[float] = [0.0] * 5
+        self.periods = [10, 20, 50, 100, 200]
+
+        # Scalar fields for output (must match uout.json)
+        self.ema_10 = 0.0
+        self.ema_20 = 0.0
+        self.ema_50 = 0.0
+        self.ema_100 = 0.0
+        self.ema_200 = 0.0
+
+    def _calculate_emas(self, price: float):
+        """Update all EMAs using internal vector"""
+        for i, period in enumerate(self.periods):
+            alpha = 2.0 / (period + 1)
+            self.ema_values[i] = alpha * price + (1 - alpha) * self.ema_values[i]
+
+    def copy_to_sv(self) -> pc.StructValue:
+        """Convert vector to scalars for output"""
+        # CRITICAL: Vector → Scalars
+        self.ema_10 = self.ema_values[0]
+        self.ema_20 = self.ema_values[1]
+        self.ema_50 = self.ema_values[2]
+        self.ema_100 = self.ema_values[3]
+        self.ema_200 = self.ema_values[4]
+        return super().copy_to_sv()
+
+    def from_sv(self, sv: pc.StructValue):
+        """Reconstruct vector from scalars when resuming"""
+        super().from_sv(sv)
+        # CRITICAL: Scalars → Vector (MUST be inverse of copy_to_sv)
+        self.ema_values[0] = self.ema_10
+        self.ema_values[1] = self.ema_20
+        self.ema_values[2] = self.ema_50
+        self.ema_values[3] = self.ema_100
+        self.ema_values[4] = self.ema_200
+
+    def _on_cycle_pass(self, time_tag):
+        """Process cycle using vector calculations"""
+        price = float(self.sq.close)
+
+        # Calculate using vector (convenient)
+        self._calculate_emas(price)
+
+        # Generate signals from vector values
+        if (self.ema_values[0] > self.ema_values[1] > self.ema_values[2]):
+            self.signal = 1  # Uptrend across multiple periods
+        elif (self.ema_values[0] < self.ema_values[1] < self.ema_values[2]):
+            self.signal = -1  # Downtrend
+        else:
+            self.signal = 0
+```
+
+**Why This Matters:**
+
+- **Replay Consistency**: When resuming from midpoint, `from_sv()` must correctly reconstruct your internal vector
+- **State Persistence**: Every cycle, `copy_to_sv()` must save current vector values to scalar fields
+- **Inverse Requirement**: `from_sv()` must exactly reverse what `copy_to_sv()` does
+
+**Common Mistake:**
+
+```python
+# ❌ WRONG - Asymmetric conversion
+def copy_to_sv(self):
+    self.ema_10 = self.ema_values[0]
+    self.ema_20 = self.ema_values[1]
+    # Missing: ema_50, ema_100, ema_200!
+    return super().copy_to_sv()
+
+def from_sv(self, sv):
+    super().from_sv(sv)
+    self.ema_values[0] = self.ema_10
+    self.ema_values[1] = self.ema_20
+    self.ema_values[2] = self.ema_50  # Loaded but never saved!
+    # Result: ema_values[2:] will be wrong on resume
+```
+
+**Testing:**
+
+```python
+# Test round-trip serialization
+obj1.ema_values = [100.0, 101.0, 102.0, 103.0, 104.0]
+sv = obj1.copy_to_sv()
+obj2.from_sv(sv)
+assert obj1.ema_values == obj2.ema_values  # MUST pass!
+```
+
+> **See Chapter 04 for detailed explanation of vector-to-scalar serialization pattern.**
+
 ## Summary
 
 This chapter covered:
@@ -526,7 +630,8 @@ This chapter covered:
 3. **Multi-Commodity**: Manager pattern
 4. **Cycle Boundaries**: Proper handling
 5. **Output Serialization**: Always return list
-6. **Best Practices**: All critical doctrines
+6. **Vector-to-Scalar Serialization**: Multi-parameter indicators
+7. **Best Practices**: All critical doctrines
 
 **Key Takeaways:**
 
@@ -536,6 +641,8 @@ This chapter covered:
 - Always return list (DOCTRINE 3)
 - Use online algorithms
 - Bounded memory with deque
+- **CRITICAL**: Override copy_to_sv()/from_sv() for vector-to-scalar conversion
+- **CRITICAL**: from_sv() must be exact inverse of copy_to_sv()
 
 **Next Steps:**
 

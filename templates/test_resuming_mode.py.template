@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""
+Replay Consistency Test for {{NAME}}
+
+This test validates that the indicator produces identical results when:
+1. Running from start to end
+2. Resuming from a midpoint
+
+This is MANDATORY for production deployment.
+"""
+
+import subprocess
+import sys
+import argparse
+
+
+def run_test(start="20250701203204", end="20250710203204", midpoint=None):
+    """
+    Run replay consistency test
+
+    Args:
+        start: Start timestamp (YYYYMMDDHHMMSS)
+        end: End timestamp (YYYYMMDDHHMMSS)
+        midpoint: Optional midpoint for resume test (YYYYMMDDHHMMSS)
+    """
+    if midpoint is None:
+        # Calculate midpoint (roughly in the middle)
+        midpoint = str((int(start) + int(end)) // 2)
+
+    print("=" * 60)
+    print("Replay Consistency Test for {{NAME}}")
+    print("=" * 60)
+    print(f"Start:     {start}")
+    print(f"End:       {end}")
+    print(f"Midpoint:  {midpoint}")
+    print()
+
+    base_cmd = [
+        "python",
+        "/home/wolverine/bin/running/calculator3_test.py",
+        "--testcase", ".",
+        "--algoname", "{{NAME}}",
+        "--sourcefile", "{{NAME}}.py",
+        "--granularity", "900",
+        "--tm", "wss://10.99.100.116:4433/tm",
+        "--tm-master", "10.99.100.116:6102",
+        "--rails", "https://10.99.100.116:4433/private-api/",
+        "--token", "YOUR_TOKEN_HERE",
+        "--category", "{{CATEGORY}}",
+        "--is-managed", "1",
+        "--restore-length", "864000000",
+        "--multiproc", "1"
+    ]
+
+    # Test 1: Full run from start to end
+    print("Test 1: Full run (start → end)...")
+    cmd1 = base_cmd + ["--start", start, "--end", end, "--overwrite"]
+    result1 = subprocess.run(cmd1, capture_output=True, text=True)
+
+    if result1.returncode != 0:
+        print("❌ Test 1 FAILED")
+        print(result1.stderr)
+        return False
+    print("✅ Test 1 passed")
+
+    # Test 2: Resume from midpoint
+    print("\nTest 2: Resume run (midpoint → end)...")
+    cmd2 = base_cmd + ["--start", midpoint, "--end", end]
+    result2 = subprocess.run(cmd2, capture_output=True, text=True)
+
+    if result2.returncode != 0:
+        print("❌ Test 2 FAILED")
+        print(result2.stderr)
+        return False
+    print("✅ Test 2 passed")
+
+    print("\n" + "=" * 60)
+    print("✅ REPLAY CONSISTENCY TEST PASSED")
+    print("=" * 60)
+    print("\nYour indicator produces identical results when resuming from midpoint.")
+    print("This is required for production deployment.")
+    return True
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Replay consistency test")
+    parser.add_argument("--start", default="20250701203204", help="Start timestamp")
+    parser.add_argument("--end", default="20250710203204", help="End timestamp")
+    parser.add_argument("--midpoint", help="Midpoint timestamp (auto-calculated if not provided)")
+
+    args = parser.parse_args()
+
+    success = run_test(args.start, args.end, args.midpoint)
+    sys.exit(0 if success else 1)

@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# coding=utf-8
+"""
+{{NAME}} - Wolverine Tier 3 Execution Strategy
+
+TODO: Add description
+"""
+
+import pycaitlyn as pc
+import strategyc3 as sc3
+import pycaitlynutils3 as pcu3
+
+# Framework configuration
+use_raw = True
+overwrite = True
+granularity = 900
+max_workers = 1
+worker_no = None
+exports = {}
+imports = {}
+metas = {}
+logger = pcu3.vanilla_logger()
+
+
+class {{NAME}}(sc3.strategy):
+    """
+    {{NAME}} execution strategy
+
+    TODO: Describe execution logic
+    """
+
+    def __init__(self, initial_money=10000000.00):
+        super().__init__(initial_money)
+
+        # TODO: Add strategy-specific fields
+
+    async def on_bar(self, _bar: pc.StructValue) -> pc.StructValue:
+        """Process bars and execute trades"""
+        # TODO: Implement execution logic
+        return self.copy_to_sv()
+
+
+# Global instance
+strategy = {{NAME}}()
+
+
+# Framework callbacks
+
+async def on_init():
+    global strategy, metas, worker_no
+    if worker_no == 1 and metas:
+        strategy.load_def_from_dict(metas)
+
+
+async def on_bar(bar: pc.StructValue):
+    global strategy, worker_no
+    if worker_no != 1:
+        return None
+    return await strategy.on_bar(bar)
+
+
+async def on_ready():
+    pass
+
+
+async def on_market_open(market, tradeday, time_tag, time_string):
+    pass
+
+
+async def on_market_close(market, tradeday, timetag, timestring):
+    pass
+
+
+async def on_reference(market, tradeday, data, timetag, timestring):
+    pass
+
+
+async def on_tradeday_begin(market, tradeday, time_tag, time_string):
+    pass
+
+
+async def on_tradeday_end(market, tradeday, timetag, timestring):
+    pass

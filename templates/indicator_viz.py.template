@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""
+# {{NAME}} Indicator Analysis Dashboard
+
+This notebook provides comprehensive analysis and visualization of the
+{{NAME}} indicator, including real-time monitoring and validation.
+
+## Features:
+- Interactive data fetching from the server
+- Real-time indicator visualization
+- Parameter validation against real market data
+- Technical analysis dashboard
+- Parameter optimization recommendations
+
+Run this in Jupyter notebook for interactive analysis.
+"""
+
+# %% [markdown]
+# # {{NAME}} Indicator Analytics Dashboard
+#
+# This notebook fetches and analyzes the {{NAME}} indicator's features,
+# focusing on parameter validation, indicator performance, and analysis.
+
+# %%
+# Core imports for data fetching and analysis
+import asyncio
+import warnings
+from typing import Dict, List, Optional, Tuple
+import json
+import math
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import svr3
+import pycaitlynutils3 as pcu3
+
+warnings.filterwarnings("ignore")
+
+# Set up plotting style
+plt.style.use("seaborn-v0_8")
+sns.set_palette("husl")
+
+print("📊 {{NAME}} Indicator Dashboard Initialized")
+
+# %% [markdown]
+# ## Data Connection Configuration
+#
+# Configure the connection to fetch {{NAME}} indicator data from
+# the server.
+
+# %%
+
+class {{NAME}}DataFetcher:
+    """Data fetcher for {{NAME}} indicator"""
+
+    def __init__(
+        self, start_date: int = 20230101203204, end_date: int = 20250710203204,
+        commodity: str = "i"  # Default commodity
+    ):
+        """
+        Initialize data fetcher for {{NAME}} indicator
+
+        Args:
+            start_date: Start date in YYYYMMDDHHMMSS format
+            end_date: End date in YYYYMMDDHHMMSS format
+            commodity: Commodity to analyze (i, j, cu, al, rb, sc, TA, fu, MA)
+        """
+        self.start_date = start_date
+        self.end_date = end_date
+        self.commodity = commodity
+        self.token = "YOUR_TOKEN_HERE"  # TODO: Replace with your actual token
+
+        # Determine market for commodity
+        self.market = self._get_market_for_commodity(commodity)
+
+        # Initialize connection for {{NAME}}
+        self.client = svr3.sv_reader(
+            start_date,
+            end_date,
+            "{{NAME}}",  # Indicator name
+            900,  # 15-minute granularity (adjust as needed)
+            "private",
+            "symbol",
+            [self.market],
+            [f"{commodity}<00>"],  # Logical contract
+            False,
+            self.token,
+        )
+
+        # Data storage
+        self.df = None
+        self.available_fields = []
+
+    def _get_market_for_commodity(self, commodity: str) -> str:
+        """Determine market for given commodity"""
+        dce_commodities = ['i', 'j', 'm', 'y', 'p', 'c', 'a', 'b', 'v', 'l', 'pp']
+        shfe_commodities = ['cu', 'al', 'zn', 'pb', 'ni', 'sn', 'au', 'ag', 'rb', 'wr', 'hc', 'fu', 'bu', 'ru', 'sc']
+        czce_commodities = ['TA', 'MA', 'FG', 'SR', 'CF', 'RM', 'OI', 'WH', 'AP', 'CJ']
+
+        if commodity in dce_commodities:
+            return "DCE"
+        elif commodity in shfe_commodities:
+            return "SHFE"
+        elif commodity in czce_commodities:
+            return "CZCE"
+        else:
+            raise ValueError(f"Unknown commodity: {commodity}")
+
+    async def fetch_data(self) -> pd.DataFrame:
+        """
+        Fetch {{NAME}} indicator data from server
+
+        Returns:
+            DataFrame with all indicator fields
+        """
+        print(f"Fetching {{NAME}} data for {self.commodity}<00>...")
+        print(f"Date range: {self.start_date} to {self.end_date}")
+
+        # Read data using svr3
+        await self.client.read()
+
+        # Get first available namespace and meta_id
+        namespaces = list(self.client.data.keys())
+        if not namespaces:
+            raise ValueError("No data received from server")
+
+        first_ns = namespaces[0]
+        meta_ids = list(self.client.data[first_ns].keys())
+        if not meta_ids:
+            raise ValueError("No meta_ids in namespace")
+
+        first_meta = meta_ids[0]
+
+        print(f"Found namespace: {first_ns}, meta_id: {first_meta}")
+
+        # Extract data from client
+        data_dict = self.client.data[first_ns][first_meta]
+
+        # Get available fields from the data
+        if data_dict:
+            first_key = next(iter(data_dict))
+            sample_data = data_dict[first_key]
+            self.available_fields = [field for field in dir(sample_data)
+                                    if not field.startswith('_') and
+                                    not callable(getattr(sample_data, field))]
+            print(f"Available fields: {self.available_fields}")
+
+        # Convert to DataFrame
+        rows = []
+        for timestamp, sv_data in data_dict.items():
+            row = {'timestamp': timestamp}
+
+            # Extract all fields from sv_object
+            for field in self.available_fields:
+                try:
+                    value = getattr(sv_data, field)
+                    # Convert bytes to string if needed
+                    if isinstance(value, bytes):
+                        value = value.decode('utf-8')
+                    row[field] = value
+                except AttributeError:
+                    row[field] = None
+
+            rows.append(row)
+
+        df = pd.DataFrame(rows)
+
+        # Convert timestamp to datetime
+        df['datetime'] = pd.to_datetime(df['timestamp'].astype(str), format='%Y%m%d%H%M%S')
+        df = df.sort_values('datetime')
+
+        # Store for later use
+        self.df = df
+
+        print(f"✓ Loaded {len(df)} data points")
+        print(f"Date range: {df['datetime'].min()} to {df['datetime'].max()}")
+
+        return df
+
+    def get_summary(self) -> Dict:
+        """Get summary statistics of the indicator data"""
+        if self.df is None:
+            return {}
+
+        summary = {
+            'total_points': len(self.df),
+            'date_range': (self.df['datetime'].min(), self.df['datetime'].max()),
+            'fields': self.available_fields,
+            'commodity': self.commodity,
+            'market': self.market
+        }
+
+        # Add basic statistics for numeric fields
+        numeric_fields = self.df.select_dtypes(include=[np.number]).columns
+        summary['statistics'] = {}
+        for field in numeric_fields:
+            if field != 'timestamp':
+                summary['statistics'][field] = {
+                    'mean': self.df[field].mean(),
+                    'std': self.df[field].std(),
+                    'min': self.df[field].min(),
+                    'max': self.df[field].max()
+                }
+
+        return summary
+
+
+# %% [markdown]
+# ## Fetch Data
+#
+# Load {{NAME}} indicator data from the server
+
+# %%
+# Initialize fetcher
+fetcher = {{NAME}}DataFetcher(
+    start_date=20250701203204,  # Adjust date range as needed
+    end_date=20250710203204,
+    commodity="i"  # Change to your target commodity
+)
+
+# Fetch data
+df = await fetcher.fetch_data()
+
+# Display summary
+summary = fetcher.get_summary()
+print("\n📊 Data Summary:")
+print(f"Total data points: {summary['total_points']}")
+print(f"Commodity: {summary['commodity']} ({summary['market']})")
+print(f"Date range: {summary['date_range'][0]} to {summary['date_range'][1]}")
+print(f"\nAvailable fields: {', '.join(summary['fields'])}")
+
+# Display first few rows
+print("\n📋 Sample data:")
+print(df.head())
+
+# %% [markdown]
+# ## Basic Visualization
+#
+# Create basic plots to visualize indicator values
+
+# %%
+# TODO: Customize these plots based on your indicator's output fields
+
+# Example: Plot indicator value over time
+if 'indicator_value' in df.columns:
+    plt.figure(figsize=(15, 6))
+    plt.plot(df['datetime'], df['indicator_value'], label='Indicator Value', linewidth=1.5)
+    plt.xlabel('Date')
+    plt.ylabel('Indicator Value')
+    plt.title(f'{{NAME}} - Indicator Value Over Time')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+# Example: Plot signals if available
+if 'signal' in df.columns:
+    plt.figure(figsize=(15, 4))
+    plt.plot(df['datetime'], df['signal'], label='Signal', linewidth=1.5)
+    plt.xlabel('Date')
+    plt.ylabel('Signal')
+    plt.title(f'{{NAME}} - Trading Signals')
+    plt.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+# %% [markdown]
+# ## Statistical Analysis
+#
+# Analyze the statistical properties of your indicator
+
+# %%
+# Display statistics for numeric fields
+print("📊 Statistical Analysis:")
+print("="* 60)
+
+for field, stats in summary['statistics'].items():
+    print(f"\n{field}:")
+    print(f"  Mean: {stats['mean']:.4f}")
+    print(f"  Std:  {stats['std']:.4f}")
+    print(f"  Min:  {stats['min']:.4f}")
+    print(f"  Max:  {stats['max']:.4f}")
+
+# %% [markdown]
+# ## Distribution Analysis
+#
+# Visualize the distribution of indicator values
+
+# %%
+# Plot histograms for numeric fields (excluding timestamp)
+numeric_cols = df.select_dtypes(include=[np.number]).columns
+plot_cols = [col for col in numeric_cols if col not in ['timestamp', 'bar_index']]
+
+if plot_cols:
+    n_cols = len(plot_cols)
+    fig, axes = plt.subplots((n_cols + 1) // 2, 2, figsize=(15, 4 * ((n_cols + 1) // 2)))
+    axes = axes.flatten() if n_cols > 1 else [axes]
+
+    for idx, col in enumerate(plot_cols):
+        axes[idx].hist(df[col].dropna(), bins=50, alpha=0.7, edgecolor='black')
+        axes[idx].set_xlabel(col)
+        axes[idx].set_ylabel('Frequency')
+        axes[idx].set_title(f'Distribution of {col}')
+        axes[idx].grid(True, alpha=0.3)
+
+    # Hide unused subplots
+    for idx in range(len(plot_cols), len(axes)):
+        axes[idx].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+# %% [markdown]
+# ## Time Series Analysis
+#
+# Analyze time series properties
+
+# %%
+# Plot all numeric fields over time
+if plot_cols:
+    fig, axes = plt.subplots(len(plot_cols), 1, figsize=(15, 4 * len(plot_cols)))
+    if len(plot_cols) == 1:
+        axes = [axes]
+
+    for idx, col in enumerate(plot_cols):
+        axes[idx].plot(df['datetime'], df[col], linewidth=1.5)
+        axes[idx].set_xlabel('Date')
+        axes[idx].set_ylabel(col)
+        axes[idx].set_title(f'{{NAME}} - {col} Over Time')
+        axes[idx].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+# %% [markdown]
+# ## Custom Analysis
+#
+# Add your custom analysis and visualizations here based on your indicator's specific features
+
+# %%
+# TODO: Add custom analysis specific to your indicator
+# Examples:
+# - Correlation analysis between different fields
+# - Performance metrics calculation
+# - Signal accuracy analysis
+# - Parameter sensitivity analysis
+
+print("✅ Visualization complete!")
+print("\nNext steps:")
+print("1. Customize the plots based on your indicator's specific fields")
+print("2. Add performance metrics and validation logic")
+print("3. Implement parameter optimization analysis")
+print("4. Save important plots for documentation")

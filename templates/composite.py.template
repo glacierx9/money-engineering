@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+# coding=utf-8
+"""
+{{NAME}} - Wolverine Tier 2 Composite Strategy
+
+TODO: Add description of portfolio management strategy
+"""
+
+import pycaitlyn as pc
+import strategyc3 as sc3
+import pycaitlynutils3 as pcu3
+from typing import List, Dict, Tuple
+import math
+
+# Framework configuration
+use_raw = True
+overwrite = True
+granularity = 900
+max_workers = 1
+worker_no = None
+exports = {}
+imports = {}
+metas = {}
+logger = pcu3.vanilla_logger()
+
+
+class {{NAME}}(sc3.strategy):
+    """
+    {{NAME}} composite strategy
+
+    Manages multiple basket strategies and allocates capital dynamically.
+    TODO: Describe your portfolio management approach
+    """
+
+    def __init__(self, initial_money=10000000.00, basket_count=10):
+        super().__init__(initial_money)
+
+        # Configuration
+        self.basket_count = basket_count
+
+        # Basket management
+        self.strategies: List[sc3.strategy] = []
+        self.keys: List[Tuple] = []
+        self.strategy_map: Dict = {}
+        self.available_strategies: Dict = {}
+        self.imported_strategies: Dict = {}
+
+        # Portfolio state arrays (one per basket)
+        self.markets: List[bytes] = []
+        self.codes: List[bytes] = []
+        self.metas: List[int] = []
+        self.signals: List[int] = []
+        self.leverages: List[float] = []
+        self.capitals: List[float] = []
+        self.pvs: List[float] = []
+
+        # Initialize empty baskets
+        self.initialize_empty_baskets()
+
+    def initialize_empty_baskets(self):
+        """Initialize basket slots"""
+        for i in range(self.basket_count):
+            self.keys.append((0, b'', b''))
+            basket = sc3.strategy(0.0)
+            basket.persistent = False
+            self.strategies.append(basket)
+        self._save()
+
+    def initialize_imported_strategies(self, imports, metas):
+        """Initialize available strategy types from imports"""
+        strategies = {}
+
+        for _ns in imports.keys():
+            for _name in imports[_ns].keys():
+                namespace = pc.namespace_global if _ns == 'global' else pc.namespace_private
+
+                for key in metas.keys():
+                    if key[0] == namespace and key[1] == _name:
+                        meta_def = metas[key]
+                        meta_id = meta_def[5]
+                        revision = meta_def[0].get_revision()
+                        strategies[(namespace, _name)] = [(namespace, meta_id), (_name, revision)]
+
+        for k in strategies.keys():
+            if k[0] == pc.namespace_global and k[1] == 'SampleQuote':
+                continue
+            self.imported_strategies[strategies[k][0]] = strategies[k][1]
+
+    async def on_bar(self, _bar: pc.StructValue) -> pc.StructValue:
+        """Main signal processing"""
+        # TODO: Implement basket management logic
+        # - Process Tier 1 strategy signals
+        # - Allocate/deallocate baskets
+        # - Update portfolio state
+
+        self._save()
+        self._sync()
+        return self.copy_to_sv()
+
+    def _save(self):
+        """Synchronize arrays with basket states"""
+        self.markets = self._get_array('market')
+        self.codes = self._get_array('code')
+        self.metas = self._get_array('meta_id')
+        self.signals = self._get_array('signal')
+        self.leverages = self._get_array('leverage')
+        self.capitals = self._get_array('pv')
+        self.pvs = self._get_array('pv')
+
+    def _get_array(self, prop):
+        """Extract property from all baskets"""
+        return [getattr(s, prop) for s in self.strategies]
+
+    def _sync(self):
+        """Synchronize portfolio metrics"""
+        last_pv = self.pv
+        self.pv = sum(self.pvs) + self.cash
+        self.calc_stats(last_pv)
+
+
+# Global instance
+composite = {{NAME}}()
+
+
+# Framework callbacks
+
+async def on_init():
+    """Initialize composite strategy"""
+    global composite, imports, metas, worker_no
+    if worker_no == 1 and metas and imports:
+        composite.initialize_imported_strategies(imports, metas)
+        composite.load_def_from_dict(metas)
+
+
+async def on_bar(bar: pc.StructValue):
+    """Process bars"""
+    global composite, worker_no
+    if worker_no != 1:
+        return None
+    return await composite.on_bar(bar)
+
+
+async def on_ready():
+    pass
+
+
+async def on_market_open(market, tradeday, time_tag, time_string):
+    pass
+
+
+async def on_market_close(market, tradeday, timetag, timestring):
+    pass
+
+
+async def on_reference(market, tradeday, data, timetag, timestring):
+    pass
+
+
+async def on_tradeday_begin(market, tradeday, time_tag, time_string):
+    pass
+
+
+async def on_tradeday_end(market, tradeday, timetag, timestring):
+    pass

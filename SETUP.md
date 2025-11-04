@@ -118,7 +118,7 @@ egg/
 │   ├── 02-uin-and-uout.md      # Configuration files guide
 │   ├── 03-programming-basics-and-cli.md
 │   ├── 04-structvalue-and-sv_object.md
-│   ├── 05-singularity.md       # Stateless design principles
+│   ├── 05-stateless-design.md  # Stateless design principles
 │   ├── 06-backtest.md          # Testing and validation
 │   ├── 07-tier1-indicator.md   # Basic indicator development
 │   ├── 08-tier2-composite.md   # Portfolio management
