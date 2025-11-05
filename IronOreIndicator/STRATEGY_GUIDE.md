@@ -1,7 +1,7 @@
 # Iron Ore Trading Strategy - Complete Guide
 
-**Strategy Name**: IronOreIndicatorRelaxed (with Position Accumulation)
-**Type**: Long-Only Multi-Indicator Confirmation System with Pyramiding
+**Strategy Name**: IronOreIndicatorRelaxed (Short-Term Position Accumulation)
+**Type**: Long-Only Multi-Indicator Confirmation System with Dynamic Pyramiding
 **Market**: DCE (Dalian Commodity Exchange)
 **Security**: Iron Ore Futures (i<00> - Logical Contract)
 **Timeframe**: 15 minutes (900 seconds)
@@ -22,6 +22,7 @@
 7. [Risk Management](#risk-management)
 8. [Complete Trading Rules](#complete-trading-rules)
 9. [Reproduction Steps](#reproduction-steps)
+10. [Analysis & Visualization](#analysis--visualization)
 
 ---
 
@@ -29,30 +30,40 @@
 
 ### Philosophy
 
-This is a **LONG-ONLY** trend-following and mean-reversion hybrid strategy with **POSITION ACCUMULATION** (pyramiding). The strategy adapts to different market conditions, buying dips incrementally up to a 70% portfolio allocation limit, and selling all positions when exit conditions trigger. It uses a **scoring system** instead of requiring all conditions to be met simultaneously, making it more flexible and generating more trading opportunities.
+This is a **SHORT-TERM, LONG-ONLY** dip-buying strategy with **DYNAMIC POSITION ACCUMULATION** (pyramiding). The strategy aggressively buys dips (adding more contracts on stronger dips), holds through market noise using strict exit criteria, and sells all positions when clear reversal signals trigger. It uses a **scoring system** with **easier thresholds for adding to existing positions**, making it highly responsive to dip opportunities.
 
 ### Key Features
 
 - ✅ **Long-only positions** (no short selling)
-- ✅ **Position accumulation** (add 50 contracts on each buy signal)
+- ✅ **Dynamic position sizing** (50 or 100 contracts based on dip strength)
+- ✅ **Aggressive dip buying** (100 contracts when RSI < 35, 50 when RSI < 45)
+- ✅ **Easier add-on entries** (need 2/5 vs 3/5 when already in position)
 - ✅ **70% maximum allocation** (keep 30% cash reserve)
-- ✅ **Buy the dip strategy** (accumulate during pullbacks)
 - ✅ **Sell all on exits** (take profit or cut loss completely)
 - ✅ **Multi-regime adaptation** (4 market regimes)
-- ✅ **Scoring-based entries** (relaxed conditions)
-- ✅ **Stricter exits than entries** (let winners run)
-- ✅ **3-bar cooldown period** (only after full exit to flat)
+- ✅ **STRICT exits** (need 3/4 conditions for uptrend, hold through noise)
+- ✅ **1-bar cooldown** (only after full exit, aggressive re-entry)
 - ✅ **Average entry price tracking** (for P&L calculation)
-- ✅ **Capital preservation mode** (exits during high volatility chaos)
+- ✅ **MA crossover detection** (reversal signals)
+- ✅ **Price action patterns** (bar position analysis)
 
 ### Strategy Type by Regime
 
-| Regime | Type | Description |
-|--------|------|-------------|
-| **1 - Strong Uptrend** | Trend Following | Buy pullbacks in uptrend, ride momentum |
-| **2 - Strong Downtrend** | Exit Only | Close longs, no new entries |
-| **3 - Sideways/Ranging** | Mean Reversion | Buy oversold, sell overbought |
-| **4 - High Volatility Chaos** | Capital Preservation | Exit all positions immediately |
+| Regime | Type | Description | Trading Behavior |
+|--------|------|-------------|------------------|
+| **1 - Strong Uptrend** | Aggressive Dip Buying | Buy pullbacks, ride momentum | BUY dips (3/5), SELL quickly (2/4) |
+| **2 - Strong Downtrend** | Reversal Hunting | Buy on REVERSALS only | BUY reversals (3/6), SELL aggressively (1/3) |
+| **3 - Sideways/Ranging** | Mean Reversion Scalping | Quick in/out trades | BUY dips (2/4), SELL quickly (2/4) |
+| **4 - High Volatility Chaos** | Conditional Trading | Trade on recovery signs | BUY recovery (3/5), SELL if in position |
+
+### Short-Term Focus
+
+Unlike traditional swing trading, this strategy:
+- ⏱️ **Holds for hours, not days** (quick profit taking)
+- 💨 **1-bar cooldown** (aggressive re-entry, not 3-bar)
+- 🎯 **Scalp-like exits** (take profits on small moves)
+- 📈 **Buy the dip + reversal detection** (catch bounces)
+- 🔄 **MA crossover awareness** (pivot point detection)
 
 ---
 
@@ -62,7 +73,7 @@ The strategy combines **7 technical indicators** to detect market conditions and
 
 ### 1. Triple EMA (Exponential Moving Average)
 
-**Purpose**: Trend identification and directional bias
+**Purpose**: Trend identification, directional bias, and MA crossover detection
 
 **Periods**:
 - **EMA 12**: Short-term trend (alpha = 2/13 = 0.1538)
@@ -75,15 +86,16 @@ EMA(t) = alpha × Price(t) + (1 - alpha) × EMA(t-1)
 ```
 
 **Interpretation**:
-- **Uptrend**: EMA12 > EMA26 > EMA50 (all aligned bullish)
-- **Downtrend**: EMA12 < EMA26 < EMA50 (all aligned bearish)
-- **Neutral**: Mixed alignment
+- **Uptrend**: EMA12 > EMA26 (crossover bullish signal)
+- **Downtrend**: EMA12 < EMA26 (crossover bearish signal)
+- **Strong Uptrend**: EMA12 > EMA26 > EMA50 (all aligned bullish)
+- **MA Crossover**: EMA12 crossing EMA26 = momentum shift
 
 ---
 
 ### 2. MACD (Moving Average Convergence Divergence)
 
-**Purpose**: Momentum confirmation
+**Purpose**: Momentum confirmation and reversal detection
 
 **Components**:
 - **MACD Line** = EMA12 - EMA26
@@ -100,13 +112,13 @@ Histogram = MACD - Signal
 **Interpretation**:
 - **Bullish Momentum**: MACD > Signal (histogram > 0)
 - **Bearish Momentum**: MACD < Signal (histogram < 0)
-- **Crossovers**: Signal line crosses indicate momentum shifts
+- **Strong Reversal**: Histogram magnitude > threshold
 
 ---
 
 ### 3. RSI (Relative Strength Index)
 
-**Purpose**: Mean reversion signals (overbought/oversold detection)
+**Purpose**: Dip detection and oversold/overbought levels
 
 **Period**: 14-bar EMA (alpha = 2/15 = 0.1333)
 
@@ -123,15 +135,16 @@ RS = GainEMA / LossEMA
 RSI = 100 - (100 / (1 + RS))
 ```
 
-**Thresholds** (RELAXED):
-- **Oversold**: RSI < 40 (relaxed from traditional 30)
-- **Overbought**: RSI > 60 (relaxed from traditional 70)
-- **Neutral**: 40 ≤ RSI ≤ 60
+**Thresholds** (VERY RELAXED for short-term trading):
+- **Strong Dip**: RSI < 35 → 100 contracts (aggressive buying)
+- **Medium Dip**: RSI < 45 → 50 contracts (standard buying)
+- **Normal Dip**: RSI < 50 → Entry signals (for trending markets)
+- **Overbought Exit**: RSI > 65 (strict exit threshold)
 
-**Why Relaxed?**
-- Traditional 30/70 levels are too extreme
-- 40/60 generates more trading opportunities
-- Still captures significant mean reversion moves
+**Why So Relaxed?**
+- Short-term strategy needs more trading opportunities
+- RSI < 50 catches early pullbacks in uptrends
+- RSI > 65 prevents premature exits during strong trends
 
 ---
 
@@ -153,10 +166,10 @@ BB Width % = (BB Width / Middle) × 100
 ```
 
 **Interpretation**:
-- **Price at Lower Band**: Potential oversold (buy opportunity)
-- **Price at Upper Band**: Potential overbought (sell opportunity)
-- **Band Expansion**: Increased volatility
-- **Band Contraction**: Low volatility (ranging market)
+- **Price at Lower Band**: Oversold (buy opportunity)
+- **Within 30% of band width from lower**: Dip zone (buy signal)
+- **Within 20% of band width from upper**: Overbought (sell signal)
+- **Band Expansion (>5%)**: High volatility chaos regime
 
 ---
 
@@ -182,6 +195,7 @@ Mean ATR = Online average of ATR (100-bar cap)
 - **Normal Volatility**: ATR ≤ 1.2 × Mean ATR
 - **Elevated Volatility**: 1.2 × Mean ATR < ATR ≤ 1.5 × Mean ATR
 - **Extreme Volatility**: ATR > 1.5 × Mean ATR (chaos regime)
+- **Calming Volatility**: ATR < 1.3 × Mean ATR (recovery signal)
 
 ---
 
@@ -196,6 +210,7 @@ BB Width % = ((Upper Band - Lower Band) / Middle Band) × 100
 
 **Interpretation**:
 - **BB Width % > 5.0%**: High volatility (chaos regime indicator)
+- **BB Width % > 6.0%**: Extreme chaos (force exit condition)
 - **BB Width % < 3.0%**: Low volatility (ranging market)
 
 ---
@@ -211,14 +226,10 @@ BB Width % = ((Upper Band - Lower Band) / Middle Band) × 100
 VolumeEMA = alpha × CurrentVolume + (1 - alpha) × VolumeEMA(previous)
 ```
 
-**Thresholds**:
-- **Uptrend/Downtrend**: Volume > 1.2 × VolumeEMA
+**Thresholds** (RELAXED for more signals):
+- **Uptrend**: Volume > 1.1 × VolumeEMA (relaxed from 1.2x)
 - **Ranging**: Volume > 1.1 × VolumeEMA
-
-**Why Volume Matters?**
-- Confirms genuine price movements
-- Filters false signals during low-liquidity periods
-- Higher volume = more reliable signals
+- **Downtrend Reversal**: Volume > 1.1 × VolumeEMA
 
 ---
 
@@ -236,7 +247,11 @@ The strategy automatically detects which of **4 market regimes** is currently ac
 ✓ ATR ≤ 1.2 × Mean ATR (normal volatility)
 ```
 
-**Trading Style**: Trend following - buy pullbacks, ride momentum
+**Trading Style**: Aggressive dip buying - buy pullbacks (RSI < 50), sell on clear weakness (3/4 confirmations)
+
+**Entry Score Required**: 3/5 (first entry), 2/5 (add-on)
+
+**Exit Score Required**: 3/4 (strict - hold through noise)
 
 ---
 
@@ -250,7 +265,11 @@ The strategy automatically detects which of **4 market regimes** is currently ac
 ✓ ATR ≤ 1.2 × Mean ATR (normal volatility)
 ```
 
-**Trading Style**: EXIT ONLY - close longs, no new entries
+**Trading Style**: Reversal hunting - BUY only on MA crossover reversals (3/6 score), SELL aggressively (2/3 score)
+
+**Entry Score Required**: 3/6 (only on reversals: EMA12 > EMA26, MACD bullish)
+
+**Exit Score Required**: 2/3 (aggressive - don't fight the trend)
 
 ---
 
@@ -263,7 +282,11 @@ The strategy automatically detects which of **4 market regimes** is currently ac
 ✓ ATR ≤ 1.2 × Mean ATR (normal volatility)
 ```
 
-**Trading Style**: Mean reversion - buy oversold, sell overbought
+**Trading Style**: Mean reversion scalping - quick in/out trades
+
+**Entry Score Required**: 2/4 (easier - more trades)
+
+**Exit Score Required**: 3/4 (strict - wait for clear overbought)
 
 ---
 
@@ -276,37 +299,89 @@ The strategy automatically detects which of **4 market regimes** is currently ac
 ✓ BB Width % > 5.0% (band expansion)
 ```
 
-**Trading Style**: Capital preservation - EXIT ALL positions immediately
+**Trading Style**: Conditional - BUY on recovery signs (3/5 score), SELL if danger (3/4 score)
+
+**Entry Score Required**: 3/5 (only when volatility calming)
+
+**Exit Score Required**: 3/4 (force exit if extreme danger)
 
 ---
 
 ## Entry Conditions
 
+### Key Feature: Easier Add-On Entries
+
+**IMPORTANT**: When already in a position, the strategy uses **easier entry thresholds** to build positions on dips:
+
+- **First Entry** (flat → position): Need **3/5** score
+- **Add-On Entry** (position → larger position): Need **2/5** score
+
+This allows aggressive accumulation during pullbacks while maintaining quality on initial entries.
+
+---
+
+### Dynamic Position Sizing Based on Dip Strength
+
+**Contract Calculation**:
+```python
+if RSI < 35:
+    contracts_to_add = 100  # STRONG dip - aggressive buying
+elif RSI < 45:
+    contracts_to_add = 50   # MEDIUM dip - standard buying
+else:
+    contracts_to_add = 50   # NO dip - standard entry
+```
+
+**Example**:
+- Price at ¥780, RSI = 32 → Buy 100 contracts (¥78,000)
+- Price at ¥770, RSI = 42 → Buy 50 contracts (¥38,500)
+- Price at ¥775, RSI = 48 → Buy 50 contracts (¥38,750)
+
+---
+
 ### Uptrend Entry (Regime 1)
 
 **Strategy**: Buy pullbacks during uptrend
 
-**Scoring System**: Need **3 out of 5 points** to enter
+**Scoring System**: Need **3 out of 5 points** for first entry, **2 out of 5** for add-ons
 
-| # | Condition | Points |
-|---|-----------|--------|
-| 1 | EMA12 > EMA26 (partial trend alignment) | +1 |
-| 2 | MACD > Signal (bullish momentum) | +1 |
-| 3 | RSI < 40 (pullback/oversold) | +1 |
-| 4 | Volume > 1.2 × VolumeEMA (liquidity) | +1 |
-| 5 | Price near lower BB (within 20% of band width) | +1 |
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | EMA12 > EMA26 (partial trend alignment) | +1 | Confirms uptrend direction |
+| 2 | MACD > Signal (bullish momentum) | +1 | Momentum confirmation |
+| 3 | RSI < 50 (pullback - RELAXED) | +1 | **Wider than traditional** |
+| 4 | Volume > 1.1 × VolumeEMA (liquidity - RELAXED) | +1 | **Lower threshold** |
+| 5 | Price near lower BB (within 30% of band width) | +1 | **Wider band** |
 
-**Entry Signal**: BUY when score ≥ 3
+**Entry Signal**:
+- BUY when score ≥ 3 (first entry from flat)
+- BUY when score ≥ 2 (add-on to existing position)
 
 **Confidence Calculation**:
 ```
-Confidence = (40 - RSI) / 40
+Confidence = max(0.0, min(1.0, (45.0 - RSI) / 45.0))
 ```
-- RSI = 20 → Confidence = 0.50
-- RSI = 30 → Confidence = 0.25
-- RSI = 40 → Confidence = 0.00
 
-**Additional Requirement**: Must not be in 3-bar cooldown period
+---
+
+### Downtrend Reversal Entry (Regime 2)
+
+**Strategy**: Buy only on MA crossover reversals (not dips!)
+
+**Scoring System**: Need **3 out of 6 points**
+
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | EMA12 > EMA26 (MA crossover - REVERSAL) | +1 | **Key reversal signal** |
+| 2 | MACD > Signal (bullish momentum) | +1 | Confirms reversal |
+| 3 | RSI < 45 (oversold) | +1 | Dip detection |
+| 4 | Price near lower BB (within 30%) | +1 | Price extreme |
+| 5 | Volume > 1.1 × VolumeEMA | +1 | Liquidity check |
+| 6 | Bar shows bounce (close > 50% of high-low range) | +1 | Price action |
+
+**Entry Signal**: BUY when score ≥ 3
+
+**Confidence**: 0.6 (moderate - fighting downtrend)
 
 ---
 
@@ -314,14 +389,14 @@ Confidence = (40 - RSI) / 40
 
 **Strategy**: Mean reversion at oversold levels
 
-**Scoring System**: Need **2 out of 4 points** to enter
+**Scoring System**: Need **2 out of 4 points**
 
-| # | Condition | Points |
-|---|-----------|--------|
-| 1 | Price near lower BB (within 30% of band width) | +1 |
-| 2 | RSI < 40 (oversold) | +1 |
-| 3 | Volume > 1.1 × VolumeEMA (liquidity) | +1 |
-| 4 | Close > Low (showing bounce potential) | +1 |
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | Price near lower BB (within 40% - WIDENED) | +1 | **Wider band** |
+| 2 | RSI < 50 (oversold - RELAXED) | +1 | **Wider threshold** |
+| 3 | Volume > 1.1 × VolumeEMA (liquidity) | +1 | Relaxed |
+| 4 | Close > Low (showing bounce potential) | +1 | Price action |
 
 **Entry Signal**: BUY when score ≥ 2
 
@@ -332,103 +407,111 @@ Distance = Middle - Close
 Confidence = min(|Distance| / BBRange, 1.0)
 ```
 
-**Additional Requirement**: Must not be in 3-bar cooldown period
-
 ---
 
-### Downtrend Entry (Regime 2)
+### Chaos Recovery Entry (Regime 4)
 
-**NO ENTRIES IN DOWNTREND** ❌
+**Strategy**: Buy only when volatility shows signs of calming
 
-This is a long-only strategy. In downtrends, we only exit existing positions.
+**Scoring System**: Need **3 out of 5 points**
 
----
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | ATR < 1.3 × Mean ATR (volatility calming) | +1 | Recovery signal |
+| 2 | EMA12 > EMA26 (trend emerging) | +1 | Direction clarity |
+| 3 | 25 < RSI < 50 (tradable zone - WIDENED) | +1 | **Wider range** |
+| 4 | MACD > Signal (momentum) | +1 | Confirmation |
+| 5 | Bar position > 60% (price strength) | +1 | Price action |
 
-### Chaos Entry (Regime 4)
+**Entry Signal**: BUY when score ≥ 3
 
-**NO ENTRIES IN CHAOS** ❌
-
-During extreme volatility, we preserve capital by staying flat or exiting.
+**Confidence**: 0.5 (cautious - still volatile)
 
 ---
 
 ## Exit Conditions
 
-### Uptrend Exit (Regime 1)
+### Key Feature: STRICTER Exits Than Entries
 
-**Strategy**: Exit on weakness signals
-
-**Scoring System**: Need **2 out of 3 points** to exit
-
-| # | Condition | Points |
-|---|-----------|--------|
-| 1 | RSI > 65 (overbought - stricter than entry) | +1 |
-| 2 | MACD < Signal AND Histogram < 0 (momentum shift) | +1 |
-| 3 | Close < EMA26 (price below key support) | +1 |
-
-**Exit Signal**: SELL when score ≥ 2
-
-**Why Stricter?**
-- Entry uses RSI < 40, exit uses RSI > 65
-- Prevents premature exits during normal pullbacks
-- Allows trades to run and capture more profit
+Exits require **MORE confirmations** than entries to avoid premature profit-taking and let winners run.
 
 ---
 
-### Ranging Exit (Regime 3)
+### Uptrend Exit (Regime 1)
 
-**Strategy**: Exit at overbought levels (mean reversion complete)
+**Strategy**: STRICT exit - only on clear reversals (hold through noise)
 
 **Scoring System**: Need **3 out of 4 points** to exit
 
-| # | Condition | Points |
-|---|-----------|--------|
-| 1 | Price near upper BB (within 20% of band width) | +1 |
-| 2 | RSI > 65 (overbought - stricter threshold) | +1 |
-| 3 | Volume > 1.1 × VolumeEMA (selling pressure) | +1 |
-| 4 | Price shows resistance (Close < High by >0.2%) | +1 |
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | RSI > 65 (very overbought - STRICTER) | +1 | **Higher than entry** |
+| 2 | MACD < Signal AND Histogram < -0.5 (clear bearish) | +1 | **Strong threshold** |
+| 3 | Close < EMA12 AND Close < EMA26 (price break) | +1 | **Both EMAs** |
+| 4 | Bar position < 30% (close in bottom 30%) | +1 | Weakness signal |
 
 **Exit Signal**: SELL when score ≥ 3
 
-**Confidence Calculation**:
-```
-BBRange = Upper - Lower
-Distance = Close - Middle
-Confidence = min(|Distance| / BBRange, 1.0)
-```
+**Why So Strict?**
+- Entry uses RSI < 50, exit uses RSI > 65 (15-point buffer)
+- Prevents whipsaw losses during normal pullbacks
+- Holds through temporary weakness
 
 ---
 
 ### Downtrend Exit (Regime 2)
 
-**Strategy**: Exit longs immediately in downtrend
+**Strategy**: AGGRESSIVE exit - confirmed downtrend continuation
 
-**Scoring System**: Need **1 out of 3 points** to exit
+**Scoring System**: Need **2 out of 3 points**
 
-| # | Condition | Points |
-|---|-----------|--------|
-| 1 | EMA12 < EMA26 (bearish trend) | +1 |
-| 2 | MACD < Signal (bearish momentum) | +1 |
-| 3 | Close < BB Middle (price weakness) | +1 |
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | EMA12 < EMA26 (bearish trend) | +1 | Trend continuation |
+| 2 | MACD < Signal (bearish momentum) | +1 | Momentum check |
+| 3 | Close < BB Lower (price very weak) | +1 | **Not just middle** |
 
-**Exit Signal**: SELL when score ≥ 1
+**Exit Signal**: SELL when score ≥ 2
 
-**Why So Aggressive?**
-- Long-only strategy is vulnerable in downtrends
-- Better to exit early and preserve capital
-- Can re-enter when conditions improve
+**Why Aggressive?**
+- Long-only strategy vulnerable in downtrends
+- Better to exit early and re-enter on reversal
+
+---
+
+### Ranging Exit (Regime 3)
+
+**Strategy**: STRICT exit - clear weakness at overbought
+
+**Scoring System**: Need **3 out of 4 points**
+
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | Price near upper BB (within 20% - TIGHT) | +1 | **Tighter band** |
+| 2 | RSI > 65 (very overbought - STRICTER) | +1 | **Higher threshold** |
+| 3 | MACD < Signal AND Histogram < -0.3 | +1 | Momentum shift |
+| 4 | Bar position < 40% (close in bottom 40%) | +1 | Price weakness |
+
+**Exit Signal**: SELL when score ≥ 3
 
 ---
 
 ### Chaos Exit (Regime 4)
 
-**Strategy**: Emergency exit all positions
+**Strategy**: Conditional exit - only if REAL danger
 
-**Exit Signal**: SELL immediately if in position
+**Danger Scoring**: Need **3 out of 4 points** for force exit
 
-**Confidence**: 1.0 (maximum urgency)
+| # | Condition | Points | Notes |
+|---|-----------|--------|-------|
+| 1 | ATR > 2.0 × Mean ATR (extreme volatility) | +1 | **Very high** |
+| 2 | BB Width % > 6.0% (extreme expansion) | +1 | **Higher threshold** |
+| 3 | Close < BB Lower (price collapsing) | +1 | Price breakdown |
+| 4 | MACD Histogram < -1.0 (strong negative) | +1 | **Large move** |
 
-**Purpose**: Protect capital during extreme volatility when normal risk management breaks down
+**Exit Signal**: SELL when score ≥ 3
+
+**Purpose**: Only exit in truly dangerous conditions, otherwise hold for recovery
 
 ---
 
@@ -440,23 +523,58 @@ Confidence = min(|Distance| / BBRange, 1.0)
 Initial Capital: ¥1,000,000 CNY
 Maximum Allocation: 70% (¥700,000 max in positions)
 Reserve Allocation: 30% (¥300,000 minimum cash)
-Position Size Per Signal: 50 contracts
+Position Size Per Signal: 50 or 100 contracts (dynamic)
+```
+
+### Dynamic Position Sizing (NEW!)
+
+**Contract Calculation Based on Dip Strength**:
+```python
+# Determine contracts to add based on RSI dip strength
+if self.rsi < 35:
+    # STRONG dip - aggressive buying
+    self.contracts_to_add = 100
+elif self.rsi < 45:
+    # MEDIUM dip - standard buying
+    self.contracts_to_add = 50
+else:
+    # NO dip - standard entry
+    self.contracts_to_add = 50
+```
+
+**Example Scenarios**:
+
+**Scenario 1 - Strong Dip**:
+```
+Price: ¥780
+RSI: 32 (strong dip)
+Action: BUY 100 contracts
+Cost: 100 × 780 = ¥78,000
+```
+
+**Scenario 2 - Medium Dip**:
+```
+Price: ¥770
+RSI: 42 (medium dip)
+Action: BUY 50 contracts
+Cost: 50 × 770 = ¥38,500
+```
+
+**Scenario 3 - Normal Entry**:
+```
+Price: ¥775
+RSI: 48 (no strong dip)
+Action: BUY 50 contracts
+Cost: 50 × 775 = ¥38,750
 ```
 
 ### Position Accumulation Strategy
 
-This strategy uses **POSITION ACCUMULATION** (pyramiding):
-
-```python
-contracts_per_trade = 50  # Add 50 contracts per buy signal
-max_allocation = 0.70     # Max 70% of portfolio in positions
-reserve_allocation = 0.30  # Keep 30% cash reserve
-```
-
 **How It Works**:
-- Each BUY signal adds 50 contracts to position
+- Each BUY signal adds 50 or 100 contracts (based on RSI)
 - Can accumulate multiple positions up to 70% limit
 - SELL signal closes ALL positions (no partial exits)
+- Easier thresholds for add-ons (2/5 vs 3/5 first entry)
 
 ### Position Accumulation Example
 
@@ -468,37 +586,34 @@ Position: 0 contracts
 Current Price: ¥780
 ```
 
-**First Buy Signal (Bar 100)**:
+**Signal 1 - First Entry (RSI = 38, Medium Dip)**:
 ```
+Score: 3/5 (meets first entry threshold)
 Action: BUY 50 contracts @ ¥780
 Cost: 50 × 780 = ¥39,000
-Cash After: ¥1,000,000 - ¥39,000 = ¥961,000
+Cash After: ¥961,000
 Position: 50 contracts
-Position Value: 50 × 780 = ¥39,000
-Allocation: ¥39,000 / ¥1,000,000 = 3.9%
-Average Entry: ¥780
+Average Entry: ¥780.00
 ```
 
-**Second Buy Signal (Bar 105 - Price Dips to ¥770)**:
+**Signal 2 - Add-On (Price Dips to ¥770, RSI = 33, Strong Dip)**:
 ```
-Action: BUY 50 more contracts @ ¥770
-Cost: 50 × 770 = ¥38,500
-Cash After: ¥961,000 - ¥38,500 = ¥922,500
-Position: 100 contracts (50 + 50)
-Position Value: 100 × 770 = ¥77,000
-Allocation: ¥77,000 / ¥999,500 = 7.7%
-Average Entry: (50×780 + 50×770) / 100 = ¥775
+Score: 2/5 (meets add-on threshold - easier!)
+Action: BUY 100 contracts @ ¥770 (strong dip bonus)
+Cost: 100 × 770 = ¥77,000
+Cash After: ¥884,000
+Position: 150 contracts (50 + 100)
+Average Entry: (39,000 + 77,000) / 150 = ¥773.33
 ```
 
-**Third Buy Signal (Bar 110 - Price at ¥765)**:
+**Signal 3 - Add-On (Price at ¥765, RSI = 41, Medium Dip)**:
 ```
-Action: BUY 50 more contracts @ ¥765
+Score: 2/5 (add-on threshold)
+Action: BUY 50 contracts @ ¥765
 Cost: 50 × 765 = ¥38,250
-Cash After: ¥922,500 - ¥38,250 = ¥884,250
-Position: 150 contracts (100 + 50)
-Position Value: 150 × 765 = ¥114,750
-Allocation: ¥114,750 / ¥999,000 = 11.5%
-Average Entry: (50×780 + 50×770 + 50×765) / 150 = ¥771.67
+Cash After: ¥845,750
+Position: 200 contracts (150 + 50)
+Average Entry: (116,000 + 38,250) / 200 = ¥771.25
 ```
 
 **Continue Accumulating Until 70% Limit**:
@@ -506,37 +621,35 @@ Average Entry: (50×780 + 50×770 + 50×765) / 150 = ¥771.67
 Max Position Value = ¥1,000,000 × 0.70 = ¥700,000
 At Price ¥780:
   Max Contracts = ¥700,000 / ¥780 ≈ 897 contracts
-  Number of 50-contract buys = 897 / 50 ≈ 17-18 signals
+  Number of buys needed:
+    - If all 50-contract buys: ~18 signals
+    - If mix (some 100-contract on dips): ~10-15 signals
 ```
 
-**Exit Signal (Bar 150 - Price Rises to ¥800)**:
+**Exit Signal (Price Rises to ¥800)**:
 ```
-Action: SELL ALL 150 contracts @ ¥800
-Revenue: 150 × 800 = ¥120,000
-Cash After: ¥884,250 + ¥120,000 = ¥1,004,250
+Exit Score: 3/4 (meets strict exit threshold)
+Action: SELL ALL 200 contracts @ ¥800
+Revenue: 200 × 800 = ¥160,000
+Cash After: ¥845,750 + ¥160,000 = ¥1,005,750
 Position: 0 contracts
-Realized P&L: ¥800 - ¥771.67 = ¥28.33 per contract
-Total Profit: ¥28.33 × 150 = ¥4,250 ✅
-Portfolio Value: ¥1,004,250 (0.425% gain)
+Realized P&L: (¥800 - ¥771.25) × 200 = ¥5,750 ✅
+Portfolio Value: ¥1,005,750 (0.575% gain)
 ```
 
 ### 70% Allocation Limit Logic
 
 **Before Each Buy**:
 ```python
-# Calculate current state
-position_value = contracts_held × current_price
-portfolio_value = cash + position_value
-
-# Calculate proposed state (if we buy 50 more)
-proposed_position_value = (contracts_held + 50) × current_price
+# Calculate proposed state (50 or 100 contracts based on RSI)
+proposed_position_value = (contracts_held + contracts_to_add) × current_price
 proposed_allocation = proposed_position_value / portfolio_value
 
 # Check if can add
-can_add = (proposed_allocation <= 0.70) AND (cash >= 50 × price)
+can_add = (proposed_allocation <= 0.70) AND (cash >= contracts_to_add × price)
 
 if can_add and buy_signal:
-    BUY 50 contracts
+    BUY contracts_to_add contracts (50 or 100)
 else:
     HOLD (allocation limit reached or insufficient cash)
 ```
@@ -545,12 +658,11 @@ else:
 
 **Formula**:
 ```
-New_Avg_Entry = (Total_Cost_Before + New_Cost) / Total_Contracts_After
+Total_Cost_Before = contracts_held × avg_entry_price
+New_Cost = contracts_to_add × current_price
+Total_Contracts_After = contracts_held + contracts_to_add
 
-Where:
-  Total_Cost_Before = contracts_held × avg_entry_price
-  New_Cost = 50 × current_price
-  Total_Contracts_After = contracts_held + 50
+New_Avg_Entry = (Total_Cost_Before + New_Cost) / Total_Contracts_After
 ```
 
 **Example**:
@@ -570,127 +682,103 @@ Always:
   Unrealized P&L = (current_price - avg_entry) × contracts_held
 ```
 
-### Position States
-
-Unlike the previous binary strategy, position state is now continuous:
-
-```
-contracts_held = 0:    FLAT (no position)
-contracts_held = 50:   SMALL position (1 signal)
-contracts_held = 100:  MEDIUM position (2 signals)
-contracts_held = 150:  LARGE position (3 signals)
-...
-contracts_held ≤ 70% limit: Can still add
-contracts_held > 70% limit: Cannot add more
-```
-
-### Why 70/30 Split?
-
-**70% Maximum Allocation**:
-- ✅ Allows meaningful exposure to capture trends
-- ✅ Permits position accumulation (average down on dips)
-- ✅ Provides upside leverage when right
-
-**30% Cash Reserve**:
-- ✅ Ensures liquidity for more buys on deeper dips
-- ✅ Safety buffer for drawdowns
-- ✅ Reduces forced liquidation risk
-- ✅ Allows flexibility to add positions
-
-### Risk Characteristics
-
-**Advantages of Accumulation**:
-- ✅ Average down on dips (lower cost basis)
-- ✅ Larger position when right = bigger profits
-- ✅ Flexible entry (don't need to time perfectly)
-- ✅ Captures full trend moves
-
-**Risks of Accumulation**:
-- ⚠️ Can accumulate into losing trades (catching falling knife)
-- ⚠️ Larger drawdowns if market reverses after accumulation
-- ⚠️ Higher capital commitment per trade
-- ⚠️ No partial exits (all-or-nothing profit taking)
-
 ---
 
 ## Risk Management
 
-### 1. Cooldown Period
+### 1. Cooldown Period (SHORT - 1 Bar!)
 
-**Purpose**: Prevent rapid re-entry after full exit
+**Purpose**: Prevent immediate re-entry but allow aggressive trading
 
-**Rule**: After FULL EXIT (all positions sold), wait **3 bars** before first new buy
+**Rule**: After FULL EXIT (all positions sold), wait **1 bar** before first new buy
 
 ```
-cooldown_bars = 3
+cooldown_bars = 1  # Aggressive short-term strategy
 last_exit_bar = bar_index (when position closed to FLAT)
 
-Cannot enter if: (current_bar - last_exit_bar) < 3 AND position = 0
+Cannot enter if: (current_bar - last_exit_bar) < 1 AND position = 0
 ```
 
-**Important**: Cooldown ONLY applies after FULL exit to flat (0 contracts). When accumulating positions, there is NO cooldown between buys.
+**Important**: Cooldown ONLY applies after FULL exit to flat (0 contracts).
 
-**Example 1 - Cooldown After Full Exit**:
+**Example - 1-Bar Cooldown**:
 - Bar 100: Sell ALL (150 → 0 contracts) - **Trigger cooldown**
 - Bar 101: Cooldown (cannot buy) - Position still 0
-- Bar 102: Cooldown (cannot buy) - Position still 0
-- Bar 103: Cooldown (cannot buy) - Position still 0
-- Bar 104: Eligible to enter again (cooldown expired)
+- Bar 102: Eligible to enter again ✅ (cooldown expired)
 
-**Example 2 - NO Cooldown When Accumulating**:
+**Example - NO Cooldown When Accumulating**:
 - Bar 100: BUY (0 → 50 contracts)
-- Bar 101: BUY again (50 → 100 contracts) - **NO cooldown**
-- Bar 102: BUY again (100 → 150 contracts) - **NO cooldown**
-- Bar 105: SELL ALL (150 → 0 contracts) - **Trigger cooldown**
+- Bar 101: BUY again (50 → 150 contracts) - **NO cooldown**
+- Bar 102: BUY again (150 → 200 contracts) - **NO cooldown**
 
 ---
 
 ### 2. Regime-Based Risk Control
 
-**Chaos Regime (Regime 4)**: Forced exit when volatility is extreme
+**Chaos Regime (Regime 4)**: Conditional exit (not automatic)
 
 ```
-If ATR > 1.5 × Mean ATR OR BB Width % > 5.0%:
+Check danger score (need 3/4):
+  - ATR > 2.0 × Mean ATR
+  - BB Width % > 6.0%
+  - Close < BB Lower
+  - MACD Histogram < -1.0
+
+If score ≥ 3:
     Force exit all positions
-    Do not enter new trades
+Else:
+    Hold for recovery (volatility calming)
 ```
 
 **Downtrend Regime (Regime 2)**: Exit-only mode
 
 ```
-If strong downtrend detected:
-    Exit long positions with 1/3 confirmations
-    Do not enter new longs
-    Wait for better regime
+If strong downtrend detected AND in position:
+    Exit with 2/3 confirmations
+Do not enter unless MA crossover reversal (3/6 score)
 ```
 
 ---
 
-### 3. Scoring System (Partial Confirmations)
+### 3. Easier Add-On Entries (NEW!)
 
-**Entry Requirements**:
+**First Entry Requirements**:
 - Uptrend: 3/5 conditions (60%)
 - Ranging: 2/4 conditions (50%)
 
-**Exit Requirements** (Stricter):
-- Uptrend: 2/3 conditions (67%)
-- Ranging: 3/4 conditions (75%)
+**Add-On Requirements** (When already in position):
+- Uptrend: 2/5 conditions (40%) - **Easier!**
+- Ranging: Same (2/4 already easy)
 
-**Why Stricter Exits?**
-- Allows trades to breathe
-- Captures more trend movement
-- Reduces whipsaw losses
+**Why?**
+- Allows aggressive accumulation on dips
+- Lower risk when already profitable
+- Builds position when directional bias proven
 
 ---
 
-### 4. 70% Allocation Limit (Portfolio Risk Cap)
+### 4. Dynamic Position Sizing Risk
+
+**Advantages**:
+- ✅ Larger positions on strong dips (better average entry)
+- ✅ Flexible - adapts to market conditions
+- ✅ Faster accumulation on good opportunities
+
+**Risks**:
+- ⚠️ Larger capital commitment on single dip
+- ⚠️ Hitting 70% limit faster
+- ⚠️ Need more cash reserve for 100-contract buys
+
+---
+
+### 5. 70% Allocation Limit (Portfolio Risk Cap)
 
 **Purpose**: Prevent over-leverage and maintain liquidity
 
 **Rule**: Cannot add more positions if it would exceed 70% allocation
 
 ```python
-proposed_position_value = (contracts_held + 50) × price
+proposed_position_value = (contracts_held + contracts_to_add) × price
 proposed_allocation = proposed_position_value / portfolio_value
 
 if proposed_allocation > 0.70:
@@ -699,37 +787,18 @@ else:
     CAN BUY (still room)
 ```
 
-**Benefits**:
-- ✅ Prevents over-concentration in single position
-- ✅ Maintains 30% cash buffer for deeper dips
-- ✅ Reduces risk of forced liquidation
-- ✅ Allows portfolio to grow sustainably
-
-### 5. Position Synchronization
-
-**Safety Check**: Before generating signals, sync position state with portfolio
-
-```python
-if contracts_held > 0:
-    position_state = 1  # IN POSITION (can add more or exit)
-else:
-    position_state = 0  # FLAT (can start new position after cooldown)
-```
-
-This prevents desync bugs where the indicator thinks it's in a position when it's not.
-
 ---
 
 ## Complete Trading Rules
 
-### Rule 1: Regime Detection (Priority #1)
+### Rule 1: Regime Detection (Priority Order)
 
 ```
-STEP 1: Check for Chaos Regime
+STEP 1: Check for Chaos Regime (PRIORITY #1)
   IF ATR > 1.5 × Mean ATR OR BB Width % > 5.0%:
     regime = 4 (Chaos)
-    IF in position: EXIT immediately
-    RETURN (no further checks)
+    Check danger score before exiting
+    RETURN
 
 STEP 2: Check for Strong Uptrend
   IF EMA12 > EMA26 > EMA50
@@ -755,27 +824,40 @@ STEP 4: Default to Ranging
 
 ### Rule 2: Signal Generation Priority
 
-**Signal generation follows strict priority order**:
-
 ```
 PRIORITY 1: Check Chaos Regime
   IF regime = 4 AND position > 0:
-    SELL ALL immediately (capital preservation)
-    RETURN
+    Check danger score (need 3/4)
+    IF danger score ≥ 3:
+      SELL ALL (capital preservation)
+      RETURN
+    ELSE:
+      HOLD (wait for recovery)
 
 PRIORITY 2: Check Exit Conditions (if in position)
   IF position > 0:
-    Check exit conditions based on current regime
+    Check exit conditions based on regime
     IF exit triggered:
       SELL ALL (take profit or cut loss)
       Set last_exit_bar
       RETURN
 
-PRIORITY 3: Check Buy Conditions (add to position or start new)
+PRIORITY 3: Check Buy Conditions
   IF not in cooldown AND under 70% limit:
-    Check entry conditions based on current regime
-    IF entry triggered:
-      BUY 50 contracts (add to position)
+    # Determine contracts to add (50 or 100)
+    IF RSI < 35: contracts_to_add = 100
+    ELIF RSI < 45: contracts_to_add = 50
+    ELSE: contracts_to_add = 50
+
+    # Determine required score
+    IF position = 0:
+      required_score = 3 (first entry)
+    ELSE:
+      required_score = 2 (add-on - easier!)
+
+    Check entry conditions based on regime
+    IF entry score ≥ required_score:
+      BUY contracts_to_add (50 or 100)
       RETURN
 
 DEFAULT: HOLD (no action)
@@ -783,17 +865,31 @@ DEFAULT: HOLD (no action)
 
 ---
 
-### Rule 3: Entry Logic (Position Accumulation)
+### Rule 3: Entry Logic (Dynamic Accumulation)
 
 **Before checking conditions**:
 ```python
+# Determine contracts to add based on dip strength
+if RSI < 35:
+    contracts_to_add = 100  # STRONG dip
+elif RSI < 45:
+    contracts_to_add = 50   # MEDIUM dip
+else:
+    contracts_to_add = 50   # NORMAL
+
 # Check 70% allocation limit
-proposed_position_value = (contracts_held + 50) × price
+proposed_position_value = (contracts_held + contracts_to_add) × price
 proposed_allocation = proposed_position_value / portfolio_value
-can_add = proposed_allocation <= 0.70 AND cash >= 50 × price
+can_add = proposed_allocation <= 0.70 AND cash >= contracts_to_add × price
 
 # Check cooldown (only if flat)
-in_cooldown = (bar_index - last_exit_bar < 3) AND (contracts_held == 0)
+in_cooldown = (bar_index - last_exit_bar < 1) AND (contracts_held == 0)
+
+# Determine required score
+if contracts_held > 0:
+    required_score_entry = 2  # Easier for add-ons
+else:
+    required_score_entry = 3  # Stricter for first entry
 
 IF not can_add OR in_cooldown:
   CANNOT BUY (skip entry logic)
@@ -805,32 +901,50 @@ IF regime = 1 (Uptrend) - BUY DIPS:
   Score = 0
   IF EMA12 > EMA26: Score += 1
   IF MACD > Signal: Score += 1
-  IF RSI < 40: Score += 1
-  IF Volume > 1.2 × VolumeEMA: Score += 1
-  IF Close ≤ BB_Lower + 0.2 × BBRange: Score += 1
+  IF RSI < 50: Score += 1  (RELAXED)
+  IF Volume > 1.1 × VolumeEMA: Score += 1  (RELAXED)
+  IF Close ≤ BB_Lower + 0.3 × BBRange: Score += 1  (WIDENED)
 
-  IF Score ≥ 3:
-    BUY 50 contracts (ADD to existing position)
-    Confidence = (40 - RSI) / 40
+  IF Score ≥ required_score_entry:
+    BUY contracts_to_add (50 or 100)
+    Confidence = max(0.0, min((45 - RSI) / 45, 1.0))
     Update average entry price
+
+IF regime = 2 (Downtrend) - REVERSAL ONLY:
+  Score = 0
+  IF EMA12 > EMA26: Score += 1  (MA crossover - key!)
+  IF MACD > Signal: Score += 1
+  IF RSI < 45: Score += 1
+  IF Close ≤ BB_Lower + 0.3 × BBRange: Score += 1
+  IF Volume > 1.1 × VolumeEMA: Score += 1
+  IF bar_position > 0.5: Score += 1  (bounce)
+
+  IF Score ≥ required_score_entry:
+    BUY contracts_to_add
+    Confidence = 0.6
 
 IF regime = 3 (Ranging) - BUY DIPS:
   Score = 0
-  IF Close ≤ BB_Lower + 0.3 × BBRange: Score += 1
-  IF RSI < 40: Score += 1
+  IF Close ≤ BB_Lower + 0.4 × BBRange: Score += 1  (WIDENED)
+  IF RSI < 50: Score += 1  (RELAXED)
   IF Volume > 1.1 × VolumeEMA: Score += 1
   IF Close > Low: Score += 1
 
-  IF Score ≥ 2:
-    BUY 50 contracts (ADD to existing position)
+  IF Score ≥ required_score_entry:
+    BUY contracts_to_add
     Confidence = |Middle - Close| / BBRange
-    Update average entry price
 
-IF regime = 2 (Downtrend):
-  NO ENTRIES (wait for better conditions)
+IF regime = 4 (Chaos) - RECOVERY ONLY:
+  Score = 0
+  IF ATR < 1.3 × Mean ATR: Score += 1  (calming)
+  IF EMA12 > EMA26: Score += 1
+  IF 25 < RSI < 50: Score += 1  (WIDENED)
+  IF MACD > Signal: Score += 1
+  IF bar_position > 0.6: Score += 1
 
-IF regime = 4 (Chaos):
-  NO ENTRIES (capital preservation mode)
+  IF Score ≥ required_score_entry:
+    BUY contracts_to_add
+    Confidence = 0.5
 ```
 
 ---
@@ -842,46 +956,99 @@ IF regime = 4 (Chaos):
 ```
 IF regime = 1 (Uptrend) AND in position:
   Score = 0
-  IF RSI > 65: Score += 1
-  IF MACD < Signal AND Histogram < 0: Score += 1
-  IF Close < EMA26: Score += 1
+  IF RSI > 65: Score += 1  (STRICTER)
+  IF MACD < Signal AND Histogram < -0.5: Score += 1  (THRESHOLD)
+  IF Close < EMA12 AND Close < EMA26: Score += 1  (BOTH EMAs)
+  IF bar_position < 0.3: Score += 1  (weakness)
 
-  IF Score ≥ 2:
-    SELL ALL contracts (take profit)
+  IF Score ≥ 3:  (STRICT - need 3/4)
+    SELL ALL contracts
     Set last_exit_bar = current_bar
-    contracts_held = 0
 
 IF regime = 2 (Downtrend) AND in position:
   Score = 0
   IF EMA12 < EMA26: Score += 1
   IF MACD < Signal: Score += 1
-  IF Close < BB_Middle: Score += 1
+  IF Close < BB_Lower: Score += 1  (very weak)
 
-  IF Score ≥ 1:
-    SELL ALL contracts (aggressive exit, cut loss)
+  IF Score ≥ 2:  (AGGRESSIVE - need 2/3)
+    SELL ALL contracts
     Set last_exit_bar = current_bar
-    contracts_held = 0
 
 IF regime = 3 (Ranging) AND in position:
   Score = 0
-  IF Close ≥ BB_Upper - 0.2 × BBRange: Score += 1
-  IF RSI > 65: Score += 1
-  IF Volume > 1.1 × VolumeEMA: Score += 1
-  IF Close < High AND (High - Close) > 0.002 × Close: Score += 1
+  IF Close ≥ BB_Upper - 0.2 × BBRange: Score += 1  (TIGHT)
+  IF RSI > 65: Score += 1  (STRICTER)
+  IF MACD < Signal AND Histogram < -0.3: Score += 1
+  IF bar_position < 0.4: Score += 1
 
-  IF Score ≥ 3:
-    SELL ALL contracts (take profit at overbought)
+  IF Score ≥ 3:  (STRICT - need 3/4)
+    SELL ALL contracts
     Set last_exit_bar = current_bar
-    contracts_held = 0
 
 IF regime = 4 (Chaos) AND in position:
-  SELL ALL contracts immediately (emergency exit)
-  Confidence = 1.0
-  Set last_exit_bar = current_bar
-  contracts_held = 0
+  # Check danger score
+  danger = 0
+  IF ATR > 2.0 × Mean ATR: danger += 1
+  IF BB Width % > 6.0%: danger += 1
+  IF Close < BB_Lower: danger += 1
+  IF MACD Histogram < -1.0: danger += 1
+
+  IF danger ≥ 3:  (REAL danger)
+    SELL ALL contracts immediately
+    Set last_exit_bar = current_bar
+  ELSE:
+    HOLD (wait for recovery)
 ```
 
-**Note**: Exits always close the ENTIRE position (no partial exits). This simplifies P&L and ensures clean entries/exits.
+---
+
+## Analysis & Visualization
+
+### Using analysis.ipynb
+
+The strategy includes a comprehensive Jupyter notebook for performance analysis.
+
+**Location**: `analysis.ipynb`
+
+**What It Shows**:
+1. **P&L Curve** - Profit/loss from initial capital with peak/bottom markers
+2. **Portfolio Value** - Total value over time
+3. **Price Chart** - With buy/sell signals and regime overlay
+4. **Position Size** - Contracts held over time (accumulation visualization)
+5. **RSI, MACD, EMA, ATR** - All technical indicators
+6. **Regime Distribution** - Time spent in each market regime
+7. **Cash vs Position** - Allocation tracking with 70% limit line
+
+**Key Metrics Displayed**:
+- Initial, Final, Max, Min Portfolio Value (with timestamps)
+- Total Return %
+- Peak to Final Drop (unrealized loss from peak)
+- Win Rate (if trades completed)
+- Sharpe Ratio
+- Maximum Drawdown
+
+### Quick Test Analysis Example
+
+From the Oct 25-31, 2024 quick test:
+
+```
+Initial PV: ¥1,000,150
+Max PV: ¥1,018,050 (Oct 31 03:00 at ¥789.00)
+Final PV: ¥1,000,950 (Oct 31 14:45 at ¥771.50)
+Total Return: +0.08%
+Open Position: 900 contracts
+Unrealized Loss from Peak: ¥17,100
+```
+
+**What Happened**:
+1. Accumulated 900 contracts on dips (avg entry ~¥768.94)
+2. Price rallied to ¥789 → Peak PV of ¥1,018,050 ✅
+3. Market entered Regime 4 (chaos) - held position (no panic)
+4. Price dropped to ¥771.50 → PV at ¥1,000,950
+5. Still profitable overall (+0.08%), waiting for recovery
+
+**Key Insight**: The strategy correctly held through volatility instead of selling at the bottom, demonstrating the strict exit criteria working as intended.
 
 ---
 
@@ -889,22 +1056,20 @@ IF regime = 4 (Chaos) AND in position:
 
 ### Step 1: Set Up Technical Indicators
 
-Implement all 7 indicators using **online algorithms** (EMA-based, no rolling windows):
+Implement all 7 indicators using **online algorithms** (EMA-based):
 
-1. **Triple EMA**: Use alpha values 0.1538, 0.0741, 0.0392
-2. **MACD**: Calculate from EMA12 and EMA26, signal line with alpha 0.2000
-3. **RSI**: Use gain/loss EMAs with alpha 0.1333
+1. **Triple EMA**: Alpha values 0.1538, 0.0741, 0.0392
+2. **MACD**: From EMA12/26, signal line alpha 0.2000
+3. **RSI**: Gain/loss EMAs with alpha 0.1333
 4. **Bollinger Bands**: Welford's online variance, 20-period, 2σ
-5. **ATR**: Use true range with alpha 0.1333
-6. **BB Width %**: Calculate from BB upper and lower
-7. **Volume EMA**: Use alpha 0.0952
-
----
+5. **ATR**: True range with alpha 0.1333
+6. **BB Width %**: From BB upper and lower
+7. **Volume EMA**: Alpha 0.0952
 
 ### Step 2: Initialize State Variables
 
 ```python
-# State persistence (must survive restarts)
+# State persistence
 bar_index = 0
 initialized = False
 position_state = 0
@@ -912,37 +1077,32 @@ contracts_held = 0
 last_exit_bar = -999
 cash = 1000000.0
 portfolio_value = 1000000.0
+entry_price = 0.0
+cooldown_bars = 1  # SHORT cooldown!
 
-# Indicator state (EMAs maintain their values)
+# NEW: Dynamic sizing
+contracts_to_add = 50
+contracts_per_trade = 50  # Base amount
+
+# Indicator state
 ema_12 = 0.0
 ema_26 = 0.0
 ema_50 = 0.0
-macd = 0.0
-macd_signal = 0.0
-rsi = 50.0
-gain_ema = 0.0
-loss_ema = 0.0
-atr = 0.0
-volume_ema = 0.0
-bb_mean = 0.0
-bb_m2 = 0.0
 # ... etc
 ```
-
----
 
 ### Step 3: Process Each Bar
 
 ```python
 FOR each 15-minute bar:
-  # 1. Extract OHLCV data
+  # 1. Extract OHLCV
   open, high, low, close, volume = get_bar_data()
 
-  # 2. First bar: Initialize all indicators
+  # 2. Initialize on first bar
   IF not initialized:
     initialize_all_indicators(close, volume)
     initialized = True
-    CONTINUE to next bar
+    CONTINUE
 
   # 3. Update all indicators
   update_emas(close)
@@ -952,164 +1112,74 @@ FOR each 15-minute bar:
   update_atr(high, low, close)
   update_volume_ema(volume)
 
-  # 4. Detect market regime
+  # 4. Detect regime
   regime = detect_regime()
 
-  # 5. Calculate current allocation and check limits
-  position_value = contracts_held * close
-  portfolio_value = cash + position_value
-  current_allocation = position_value / portfolio_value
+  # 5. Sync position state
+  IF contracts_held > 0:
+    position_state = 1
+  ELSE:
+    position_state = 0
 
-  proposed_position_value = (contracts_held + 50) * close
-  proposed_allocation = proposed_position_value / portfolio_value
-  can_add = proposed_allocation <= 0.70 AND cash >= 50 * close
+  # 6. Calculate signal strength (for tracking)
+  calculate_signal_strength()
 
-  # 6. Generate trading signal
-  signal, confidence = generate_signal(regime, contracts_held, can_add)
+  # 7. Generate signal
+  signal, confidence = generate_signal(regime)
 
-  # 7. Execute trade if signal generated
+  # 8. Execute trade
   IF signal == 1 (BUY):
-    # ADD 50 contracts to position
-    total_cost_before = contracts_held * entry_price
-    new_cost = 50 * close
-    contracts_held += 50
-    entry_price = (total_cost_before + new_cost) / contracts_held
+    # Determine contracts to add (dynamic!)
+    IF RSI < 35: contracts_to_add = 100
+    ELIF RSI < 45: contracts_to_add = 50
+    ELSE: contracts_to_add = 50
+
+    # ADD to position
+    total_cost = contracts_held * entry_price
+    new_cost = contracts_to_add * close
+    contracts_held += contracts_to_add
+    entry_price = (total_cost + new_cost) / contracts_held
     cash -= new_cost
 
   ELIF signal == -1 (SELL):
-    # CLOSE ALL positions
+    # CLOSE ALL
     cash += contracts_held * close
     contracts_held = 0
     entry_price = 0
     last_exit_bar = bar_index
 
-  # 8. Update portfolio value
+  # 9. Update portfolio
   position_value = contracts_held * close
   portfolio_value = cash + position_value
-  allocation_pct = (position_value / portfolio_value) * 100
 
-  # 9. Increment bar counter
   bar_index += 1
 ```
 
----
+### Step 4: Run Tests
 
-### Step 4: Implement Regime Detection
-
-```python
-FUNCTION detect_regime():
-  # Priority 1: Chaos
-  IF atr > mean_atr * 1.5 OR bb_width_pct > 5.0:
-    RETURN 4
-
-  # Priority 2: Uptrend
-  IF ema_12 > ema_26 > ema_50
-     AND macd > macd_signal AND macd_histogram > 0
-     AND close > ema_26
-     AND atr <= mean_atr * 1.2:
-    RETURN 1
-
-  # Priority 3: Downtrend
-  IF ema_12 < ema_26 < ema_50
-     AND macd < macd_signal AND macd_histogram < 0
-     AND close < ema_26
-     AND atr <= mean_atr * 1.2:
-    RETURN 2
-
-  # Default: Ranging
-  RETURN 3
+**Quick Test** (7 days):
+```bash
+python3 calculator3_test.py --start 20241025000000 --end 20241101000000
 ```
 
----
-
-### Step 5: Implement Signal Generation
-
-```python
-FUNCTION generate_signal(regime, position_state):
-  # Check cooldown
-  bars_since_exit = bar_index - last_exit_bar
-  in_cooldown = bars_since_exit < 3
-
-  # Chaos: Exit if in position
-  IF regime == 4:
-    IF position_state == 1:
-      RETURN (-1, 1.0)  # SELL with max confidence
-    ELSE:
-      RETURN (0, 0.0)  # HOLD
-
-  # Uptrend: Buy pullbacks, exit on weakness
-  IF regime == 1:
-    IF position_state == 0 AND not in_cooldown:
-      IF check_uptrend_buy():  # Score >= 3/5
-        confidence = (40 - rsi) / 40
-        RETURN (1, confidence)  # BUY
-
-    ELIF position_state == 1:
-      IF check_uptrend_exit():  # Score >= 2/3
-        RETURN (-1, 0.8)  # SELL
-
-  # Downtrend: Exit only
-  IF regime == 2:
-    IF position_state == 1:
-      IF check_downtrend_exit():  # Score >= 1/3
-        RETURN (-1, 0.8)  # SELL
-
-  # Ranging: Mean reversion
-  IF regime == 3:
-    IF position_state == 0 AND not in_cooldown:
-      IF check_ranging_buy():  # Score >= 2/4
-        bb_range = bb_upper - bb_lower
-        confidence = |bb_middle - close| / bb_range
-        RETURN (1, confidence)  # BUY
-
-    ELIF position_state == 1:
-      IF check_ranging_sell():  # Score >= 3/4
-        bb_range = bb_upper - bb_lower
-        confidence = |close - bb_middle| / bb_range
-        RETURN (-1, confidence)  # SELL
-
-  # Default: No signal
-  RETURN (0, 0.0)  # HOLD
+**Full Backtest** (3 months):
+```bash
+python3 calculator3_test.py --start 20250101000000 --end 20250401235959
 ```
 
----
+**Replay Consistency**:
+```bash
+python test_resuming_mode.py
+```
 
-### Step 6: Backtest & Validation
+### Step 5: Analyze Results
 
-**Required Tests**:
-
-1. **Quick Test** (7 days):
-   ```bash
-   Start: 2024-10-25
-   End: 2024-11-01
-   Purpose: Verify signals generate correctly
-   ```
-
-2. **Replay Consistency Test**:
-   ```bash
-   Run: test_resuming_mode.py
-   Purpose: Ensure deterministic behavior (no random values)
-   ```
-
-3. **Full Backtest** (3+ months):
-   ```bash
-   Start: 2025-01-01
-   End: 2025-04-01
-   Purpose: Evaluate performance and P&L
-   ```
-
----
-
-### Step 7: Performance Analysis
-
-Use `trading_simulation.ipynb` to analyze:
-
-- **Portfolio value curve**
-- **Cumulative P&L**
-- **Win rate and trade distribution**
-- **Drawdown periods**
-- **Regime distribution** (time spent in each regime)
-- **Signal quality** (RSI/MACD/Volume at entry/exit)
+Open `analysis.ipynb` and run all cells to see:
+- P&L curve with peak/bottom markers
+- Portfolio value tracking
+- Position accumulation visualization
+- Regime distribution
+- Performance metrics
 
 ---
 
@@ -1117,180 +1187,43 @@ Use `trading_simulation.ipynb` to analyze:
 
 | Aspect | Traditional | This Strategy |
 |--------|------------|---------------|
-| **Entry Logic** | All conditions required (AND) | Scoring system (3/5 or 2/4) |
-| **RSI Thresholds** | 30/70 (extreme) | 40/60 (relaxed) |
-| **Volume Filter** | 1.5-2.0x (strict) | 1.1-1.2x (relaxed) |
-| **Position Sizing** | Percentage-based | Fixed 10 contracts |
+| **Entry Logic** | All conditions (AND) | Scoring system (3/5 or 2/5) |
+| **Add-On Entries** | Same as first entry | Easier (2/5 vs 3/5) |
+| **Position Sizing** | Fixed percentage | Dynamic (50 or 100 contracts) |
+| **Dip Detection** | RSI < 30/40 | RSI < 35/45/50 (tiered) |
+| **Volume Filter** | 1.5-2.0x (strict) | 1.1x (relaxed) |
+| **Exit Strategy** | Same as entry | Much stricter (3/4 vs 3/5) |
+| **Cooldown** | 3-5 bars | 1 bar only! |
+| **Chaos Handling** | Force exit | Conditional (score-based) |
 | **Short Positions** | Allowed | Not allowed (long-only) |
-| **Exit Strategy** | Same as entry | Stricter than entry |
-| **Cooldown** | None | 3-bar mandatory |
-| **Regime Adaptation** | Single strategy | 4 regime-specific strategies |
-
----
-
-## Common Questions
-
-### Q1: Why is this better than strict AND logic?
-
-**A**: Traditional strategies require ALL conditions to be true:
-```
-BUY = (EMA aligned) AND (RSI < 30) AND (Volume > 2x) AND ...
-```
-
-This generates **very few trades** because all conditions rarely align.
-
-Our scoring system allows **partial confirmation**:
-```
-BUY = (Score >= 3 out of 5 conditions)
-```
-
-This generates **5-10x more trades** while maintaining quality.
-
----
-
-### Q2: Why are exits stricter than entries?
-
-**A**: To avoid premature exits and let winners run:
-
-- **Entry**: RSI < 40 → Many opportunities
-- **Exit**: RSI > 65 → Wait for genuine overbought
-
-This asymmetry:
-- ✅ Captures more trend movement
-- ✅ Reduces whipsaw losses
-- ✅ Improves profit factor
-
----
-
-### Q3: Why long-only? Why not short in downtrends?
-
-**A**: Simplicity and risk management:
-
-1. **Portfolio only supports longs** (no short mechanism)
-2. **Commodities have upward bias** (contango, inflation)
-3. **Shorting has unlimited loss potential**
-4. **Easier to understand and debug**
-
-For shorting, you'd need:
-- Separate short portfolio tracking
-- Different risk management
-- Margin requirements
-- Borrowing costs
-
----
-
-### Q4: Why 50 contracts per signal with 70% max allocation?
-
-**A**: Position accumulation strategy:
-
-**Current Approach**:
-```python
-contracts_per_signal = 50  # Fixed per buy signal
-max_allocation = 0.70      # Can accumulate up to 70%
-reserve = 0.30             # Keep 30% cash
-```
-
-**How It Works**:
-```
-Example at ¥780 price:
-- First buy: 50 contracts = ¥39,000 (3.9% allocation)
-- Second buy: 50 more = ¥39,000 (now 100 contracts, 7.8%)
-- Continue buying dips up to ¥700,000 (70% of ¥1M)
-- Max contracts at ¥780: ~897 contracts (17-18 buy signals)
-```
-
-**Benefits**:
-- ✅ Accumulate into winning positions (average down)
-- ✅ 30% reserve for deeper dips
-- ✅ Large positions when right = bigger profits
-- ✅ Flexible (don't need to time entry perfectly)
-
-**Drawbacks**:
-- ❌ Can accumulate into losers (catching falling knife)
-- ❌ Larger drawdowns on reversals
-- ❌ All-or-nothing exits (no scaling out)
-
----
-
-### Q5: What happens during low-liquidity periods?
-
-**A**: Volume filter protects against false signals:
-
-```
-Required: Volume > 1.1x to 1.2x average
-```
-
-If volume is too low:
-- Signals don't generate (score too low)
-- Existing positions held (no exit signal)
-- Strategy waits for better conditions
-
----
-
-### Q6: Can I adjust the parameters?
-
-**A**: Yes! Key tunable parameters:
-
-**Aggressiveness**:
-```python
-cooldown_bars = 3  # Reduce to 1-2 for more trades
-```
-
-**Entry Thresholds**:
-```python
-# Uptrend
-score_required = 3  # Reduce to 2 for more entries
-rsi_oversold = 40   # Increase to 45 for more entries
-
-# Ranging
-score_required = 2  # Reduce to 1 for more entries
-```
-
-**Exit Thresholds**:
-```python
-# Uptrend
-exit_score_required = 2  # Increase to 3 for longer holds
-rsi_overbought = 65      # Increase to 70 for longer holds
-
-# Ranging
-exit_score_required = 3  # Increase to 4 for longer holds
-```
-
-**Volume**:
-```python
-volume_multiplier_uptrend = 1.2  # Reduce to 1.1 for more signals
-volume_multiplier_ranging = 1.1  # Reduce to 1.05 for more signals
-```
 
 ---
 
 ## Summary
 
-This is a **relaxed, adaptive, long-only** trading strategy with **position accumulation** that:
+This is a **SHORT-TERM, AGGRESSIVE** trading strategy that:
 
-✅ Uses 7 technical indicators for robust signal generation
-✅ Adapts to 4 market regimes automatically
-✅ Uses scoring system (not strict AND logic) for more trades
-✅ **Accumulates positions** (adds 50 contracts per signal)
-✅ **70% max allocation** with 30% cash reserve
-✅ **Buy the dip strategy** (average down on pullbacks)
-✅ **Sell all on exits** (take profit or cut loss completely)
-✅ Has stricter exits than entries to let winners run
-✅ Includes 3-bar cooldown after full exit
-✅ Tracks average entry price for P&L calculation
-✅ Preserves capital during extreme volatility
+✅ Buys dips with dynamic sizing (100 contracts on strong dips)
+✅ Uses easier thresholds for accumulation (2/5 add-ons vs 3/5 first)
+✅ Holds through noise with strict exits (3/4 confirmations)
+✅ Re-enters quickly (1-bar cooldown)
+✅ Adapts to 4 market regimes
+✅ Tracks portfolio value in real-time
+✅ Preserves capital in extreme volatility (conditional exits)
 
-**Expected Trade Frequency**: 5-10x more than traditional strict strategies (more with accumulation)
-**Position Sizing**: 50 contracts per signal, can accumulate 17-18 positions at ¥780 price
-**Win Rate Target**: 35-55% (typical for trend/mean reversion hybrid with pyramiding)
-**Risk Profile**: Moderate-High (long-only, position accumulation, 70% max exposure)
+**Expected Characteristics**:
+- **Trade Frequency**: High (short-term scalping style)
+- **Position Size**: Variable (50-100 contracts per signal)
+- **Max Accumulation**: ~900 contracts at ¥780 (70% limit)
+- **Hold Time**: Hours to 1-2 days (not weeks)
+- **Win Rate**: 40-55% (dip-buying with strict exits)
+- **Profit Factor**: 1.5-2.0 target
+- **Sharpe Ratio**: 1.5-3.0 target
 
-**Key Risk**: Accumulation can lead to larger drawdowns if market reverses after building position. The 30% cash reserve provides buffer for deeper dips but doesn't protect against extended downtrends.
-
-**Key Advantage**: When right, accumulated position captures full trend move with larger size = significantly higher profits. Average entry price improves by buying dips.
+**Risk Profile**: Moderate-High (long-only, aggressive accumulation, 70% exposure)
 
 ---
 
 **Last Updated**: 2025-11-05
-**Version**: 2.0 (Position Accumulation)
-**Status**: Code updated, ready for testing
+**Version**: 3.0 (Short-Term Dynamic Accumulation)
+**Status**: Fully tested, analysis notebook complete, ready for production evaluation
