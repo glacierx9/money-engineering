@@ -1,18 +1,85 @@
-# IronOreIndicator
+# Iron Ore Trading Strategy Indicator
 
-TODO: Add project description
+Multi-indicator confirmation system for DCE Iron Ore futures trading.
 
 ## Overview
 
-**Type**: Indicator
-**Markets**: DCE
+**Type**: Tier-1 Indicator (WOS Framework)
+**Market**: DCE (Dalian Commodity Exchange)
+**Instrument**: i<00> (Iron Ore logical contract)
+**Granularity**: 900 seconds (15 minutes)
+**Strategy**: 7-indicator multi-confirmation with market regime detection
 
-**Securities**:
-- **DCE**: i
+## Features
+
+- **Triple EMA** (12/26/50) for trend identification
+- **MACD** for momentum confirmation
+- **RSI** for mean reversion signals
+- **Bollinger Bands** for price extremes
+- **ATR** for volatility measurement
+- **Volume EMA** for liquidity confirmation
+- **Market Regime Detection** (4 regimes: Uptrend, Downtrend, Ranging, Chaos)
+- **Progressive Position Sizing** (20% → 40% → 60%)
+- **Risk Management** (3% stops, 5%/8% profit targets)
 
 ## Quick Start
 
-### Running Tests
+```bash
+# 1. Verify framework installation
+python3 -c "import pycaitlyn; import pycaitlynts3; print('OK')"
+
+# 2. Run indicator (framework execution - refer to WOS docs)
+# Framework will process OHLCV data and generate signals
+
+# 3. Analyze results
+jupyter notebook analysis.ipynb
+```
+
+## Complete Documentation
+
+**Full implementation guide and reproduction steps:**
+
+📚 **[IronOreTradingStrategyIndicator Documentation](../IronOreTradingStrategyIndicator/INDEX.md)**
+
+The documentation provides:
+- Strategy overview and objectives
+- Technical indicator specifications
+- Market regime classification rules
+- Signal generation logic
+- Risk management procedures
+- Complete implementation guide
+- Backtesting procedures
+- Jupyter notebook visualization setup
+- Step-by-step reproduction workflow
+
+## Project Structure
+
+```
+IronOreIndicator/
+├── IronOreIndicator.py       # Main indicator implementation
+├── uin.json                   # Input configuration (OHLCV schema)
+├── uout.json                  # Output configuration (signals + indicators)
+├── analysis.ipynb             # P&L visualization notebook
+├── test_resuming_mode.py      # Replay consistency test
+├── README.md                  # This file
+└── wos/ → ../wos             # Framework documentation (symlink)
+```
+
+## Strategy Performance
+
+**Backtest Period**: 2024-01-01 to 2024-12-31
+**Evaluation Period**: 2024-10-01 to 2024-12-31
+
+**Target Metrics**:
+- Positive cumulative P&L
+- Sharpe ratio > 1.0
+- Maximum drawdown < 15%
+- Win rate > 45%
+- Profit factor > 1.3
+
+## Development
+
+### Framework Testing
 
 ```bash
 # Quick test (7 days)
@@ -31,8 +98,6 @@ python /home/wolverine/bin/running/calculator3_test.py \
     --is-managed 1 \
     --restore-length 864000000 \
     --multiproc 1
-
-# Or use VS Code debugger (F5)
 ```
 
 ### Replay Consistency Test
@@ -41,36 +106,23 @@ python /home/wolverine/bin/running/calculator3_test.py \
 python test_resuming_mode.py
 ```
 
-## Project Structure
-
-```
-IronOreIndicator/
-├── IronOreIndicator.py                  # Main implementation
-├── uin.json                   # Input configuration
-├── uout.json                  # Output configuration
-├── test_resuming_mode.py      # Replay consistency test
-├── CLAUDE.md                  # Claude Code guidance
-├── README.md                  # This file
-├── .vscode/
-│   └── launch.json           # Debug configurations
-└── .devcontainer/
-    └── devcontainer.json     # Container configuration
-```
-
-## Development
-
-See CLAUDE.md for detailed development guidance.
-
 ## Resources
 
-- **WOS Documentation**: ./wos/ (complete framework guide, 12 chapters)
-- **Quick Reference**: ./wos/INDEX.md
-- **CLAUDE.md**: Project-specific AI guidance
-- **Working Examples**: Check parent egg directory for Margarita examples
+- **Strategy Documentation**: [../IronOreTradingStrategyIndicator/](../IronOreTradingStrategyIndicator/INDEX.md)
+- **WOS Framework**: [./wos/INDEX.md](./wos/INDEX.md) - Complete framework guide
+- **Tier-1 Patterns**: [./wos/07-tier1-indicator.md](./wos/07-tier1-indicator.md)
+- **Backtest Guide**: [./wos/06-backtest.md](./wos/06-backtest.md)
 
-### Key Documentation
+## Implementation Notes
 
-- [Chapter 07: Tier-1 Indicator](./wos/07-tier1-indicator.md) - Start here!
-- [Chapter 06: Backtest](./wos/06-backtest.md) - Testing guide
-- [Chapter 10: Visualization](./wos/10-visualization.md) - Analysis tools
-- [Chapter 02: uin/uout](./wos/02-uin-and-uout.md) - Configuration reference
+This indicator follows WOS framework patterns:
+- Stateless design with online algorithms (O(1) memory)
+- Cycle boundary handling for bar processing
+- sv_object serialization for state persistence
+- Replay consistency guaranteed
+
+All technical indicators use online computation algorithms ensuring bounded memory usage and deterministic replay.
+
+---
+
+For complete implementation details and reproduction steps, see the [full documentation](../IronOreTradingStrategyIndicator/INDEX.md).
