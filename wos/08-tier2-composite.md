@@ -348,11 +348,138 @@ async def on_tradeday_end(market, tradeday, timetag, timestring):
     strategy.on_tradeday_end(bytes(market, 'utf-8'), tradeday)
 
 async def on_reference(market, tradeday, data, timetag, timestring):
-    pass
+    """CRITICAL: Forward reference data to baskets for contract rolling"""
+    global strategy
+    strategy.on_reference(bytes(market, 'utf-8'), tradeday, data)
 
 async def on_historical(params, records):
     pass
 ```
+
+## Critical Requirements for Composite Strategies
+
+### ⚠️ MANDATORY: on_reference() Callback
+
+**Purpose**: Initializes basket contract information for market data routing.
+
+**Required Implementation**:
+```python
+async def on_reference(market, tradeday, data, timetag, timestring):
+    global strategy
+    strategy.on_reference(bytes(market, 'utf-8'), tradeday, data)
+```
+
+**What It Does**:
+1. Forwards exchange reference data to all basket strategies
+2. Each basket extracts contract information (expiry dates, multipliers, commission rates)
+3. Each basket determines `leading_contract` (active contract to trade)
+4. Populates `basket.target_instrument` with actual contract code (e.g., `i2501`)
+
+**Failure Mode**:
+- Empty implementation → `basket.target_instrument = b''` (stays empty)
+- Market data arrives as `DCE/i2501` but matches against empty string
+- No match → `basket.price = 0`, `basket.pv` frozen, trading fails
+
+**Reference**: `/home/wolverine/bin/running/composite_strategyc3.py` lines 353-362, `/home/wolverine/bin/running/strategyc3.py` lines 549-626
+
+---
+
+### Contract Rolling Mechanism
+
+**Logical vs Monthly Contracts**:
+
+| Type | Format | Example | Purpose |
+|------|--------|---------|---------|
+| Logical | `commodity<00>` | `i<00>`, `cu<00>` | Continuous contract with automatic rolling |
+| Monthly | `commodityYYMM` | `i2501`, `cu2412` | Specific delivery month contract |
+
+**Data Flow**:
+
+```
+Market produces: i2501, i2505, i2509 (monthly contracts)
+                         ↓
+on_reference() receives: All contracts + expiry dates + volume data
+                         ↓
+Framework determines: i2501 is leading contract (highest volume/OI)
+                         ↓
+on_tradeday_begin() triggers: basket.target_instrument = b'i2501'
+                         ↓
+Market data arrives: DCE/i2501
+                         ↓
+Framework matches: bar.code == basket.target_instrument
+                         ↓
+Routing works: basket.on_bar() called → basket.price updated
+```
+
+**After _allocate()**:
+- `basket.code = b'i<00>'` (logical contract) ✓
+- `basket.target_instrument = b''` (empty - unusable) ✗
+
+**After on_reference() + on_tradeday_begin()**:
+- `basket.target_instrument = b'i2501'` (actual contract) ✓
+- Market data routing works ✓
+
+**Rolling Trigger**: Called automatically by `on_tradeday_begin()` based on volume or open interest.
+
+**Reference**: `/home/wolverine/bin/running/strategyc3.py` lines 549-626 (on_reference), lines 705-747 (rolling logic)
+
+---
+
+### The _allocate() Method
+
+**Signature**:
+```python
+def _allocate(self, meta_id, market, code, money, leverage)
+```
+
+**Parameters**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `meta_id` | int | Tier-1 indicator meta_id, or basket index if not following signals |
+| `market` | bytes | Market identifier (e.g., `b'DCE'`, `b'SHFE'`) |
+| `code` | bytes | Logical contract code (e.g., `b'i<00>'`, `b'cu<00>'`) |
+| `money` | float | Initial capital allocation to basket |
+| `leverage` | float | Initial leverage |
+
+**What It Does**:
+1. Transfers `money` from `self.cash` to `basket.cash`
+2. Sets `basket.market = market`, `basket.code = code`
+3. Sets `basket.meta_id = meta_id`
+4. **Sets `basket.target_instrument = b''` (EMPTY)**
+5. **Sets `basket.instrument = b''` (EMPTY)**
+6. Adds basket to `strategy_map` for lookups
+
+**What It Does NOT Do**:
+- ✗ Does NOT set `target_instrument` to actual contract
+- ✗ Does NOT subscribe basket to market data
+- ✗ Does NOT populate contract rolling information
+
+**Initialization Sequence**:
+
+```
+Step 1: _allocate(0, b'DCE', b'i<00>', capital, 1.0)
+  → basket.target_instrument = b'' (EMPTY - cannot route market data)
+
+Step 2: on_reference() forwards to baskets
+  → basket receives exchange data, learns about i2501, i2505, etc.
+
+Step 3: on_tradeday_begin() triggers rolling
+  → basket.target_instrument = b'i2501' (NOW can route market data)
+
+Step 4: Market data routing works
+  → bar.code (i2501) matches basket.target_instrument (i2501)
+```
+
+**Common Usage** (when not following Tier-1 signals):
+```python
+# Use basket index as meta_id
+for i in range(BASKET_COUNT):
+    self._allocate(i, market, commodity + b'<00>', capital, 1.0)
+```
+
+**Reference**: `/home/wolverine/bin/running/composite_strategyc3.py` lines 140-162
+
+---
 
 ## Key Concepts
 
@@ -404,13 +531,72 @@ def calculate_allocation(self, signal_data):
     return base_allocation * confidence_mult
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+| Symptom | Root Cause | Fix |
+|---------|------------|-----|
+| `basket.price = 0.00` (never updates) | `on_reference()` not forwarded → `target_instrument` empty → no market data routing | Implement `on_reference()` callback forwarding |
+| `basket.pv` frozen at initial allocation | No price updates → PV calculation uses stale data | Fix `basket.price` first (see above) |
+| `basket.signal` changes but no P&L | Trade executes with `price=0` → 0 contracts opened | Fix market data routing (see above) |
+| `self.pv` frozen at initial capital | All baskets frozen → composite sum frozen | Fix basket initialization (see above) |
+
+**Diagnostic Steps**:
+
+1. **Check `on_reference()` implementation**:
+   ```python
+   # ❌ WRONG - Empty
+   async def on_reference(...):
+       pass
+
+   # ✓ CORRECT - Forwards to baskets
+   async def on_reference(market, tradeday, data, timetag, timestring):
+       strategy.on_reference(bytes(market, 'utf-8'), tradeday, data)
+   ```
+
+2. **Verify `target_instrument` population**:
+   ```python
+   # Add logging in _on_cycle_pass()
+   for i, basket in enumerate(self.strategies):
+       logger.info(f"Basket {i}: target={basket.target_instrument}, "
+                   f"price={basket.price}, pv={basket.pv}")
+   ```
+
+   Expected: `target_instrument = b'i2501'` (actual contract code)
+
+   If empty `b''`: `on_reference()` not working
+
+3. **Verify market data arrival**:
+   ```python
+   # Add logging in on_bar()
+   if ns == pc.namespace_global:
+       logger.info(f"Market data: {market.decode()}/{code.decode()}")
+       super().on_bar(bar)
+   ```
+
+   Expected: See `DCE/i2501`, `SHFE/cu2501`, etc.
+
+
+---
+
 ## Summary
 
+**Core Concepts**:
 - Tier 2 aggregates Tier 1 signals into portfolio decisions
 - Manages multiple baskets per instrument
 - Implements risk management and capital allocation
 - Tracks performance at portfolio level
-- Uses composite_strategyc3 base class
+- Uses `composite_strategyc3` base class
+
+**Critical Requirements** ⚠️:
+1. **MUST implement `on_reference()` callback** - Forwards to `strategy.on_reference()`
+2. **MUST implement `on_tradeday_begin()` callback** - Triggers contract rolling
+3. **MUST implement `on_tradeday_end()` callback** - Handles end-of-day settlement
+4. **`_allocate()` only initializes structure** - Contract info populated by callbacks
+5. **`target_instrument` populated by rolling mechanism** - Not by `_allocate()`
+
+**Failure to implement callbacks** → `target_instrument` stays empty → no market data routing → basket trading fails.
 
 **Next:** Tier 3 execution strategies.
 
