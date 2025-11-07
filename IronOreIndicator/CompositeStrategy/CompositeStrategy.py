@@ -470,16 +470,6 @@ class CompositeStrategy(csc3.composite_strategy):
             results = []
             if self.bar_index > 0:
                 sv = self.sv_copy()
-
-                # Diagnostic logging (first few times only)
-                if not hasattr(self, '_serialize_logged_count'):
-                    self._serialize_logged_count = 0
-
-                if self._serialize_logged_count < 3:
-                    logger.info(f"[DIAGNOSTIC] sv_copy() called: bar_index={self.bar_index}, "
-                               f"sv_type={type(sv)}, sv_valid={sv is not None and sv.size() > 0 if hasattr(sv, 'size') else 'N/A'}")
-                    self._serialize_logged_count += 1
-
                 results.append(sv)
 
             self.timetag = tm
@@ -590,16 +580,6 @@ class CompositeStrategy(csc3.composite_strategy):
         # Sync state
         self._save()
         self._sync()
-
-        # Diagnostic logging (first few times only)
-        if not hasattr(self, '_sync_logged_count'):
-            self._sync_logged_count = 0
-
-        if self._sync_logged_count < 3:
-            logger.info(f"[DIAGNOSTIC] After _sync(): bar_index={self.bar_index}, "
-                       f"pv={self.pv:.2f}, nv={self.nv:.4f}, "
-                       f"initialized={self.initialized}")
-            self._sync_logged_count += 1
 
         # Mark as initialized after first cycle
         if not self.initialized:
@@ -912,17 +892,6 @@ class CompositeStrategy(csc3.composite_strategy):
         Returns True after initialization completes.
         """
         result = self.initialized and self.bar_index > 0
-
-        # Diagnostic logging (only log first few times or when False)
-        if not hasattr(self, '_ready_logged_count'):
-            self._ready_logged_count = 0
-
-        if self._ready_logged_count < 3 or not result:
-            logger.info(f"[DIAGNOSTIC] ready_to_serialize() -> {result} "
-                       f"(initialized={self.initialized}, bar_index={self.bar_index}, "
-                       f"meta_id={getattr(self, 'meta_id', 'NOT_SET')})")
-            self._ready_logged_count += 1
-
         return result
 
 # ============================================================================
@@ -940,13 +909,7 @@ async def on_init():
     global strategy, imports, metas, worker_no
 
     if worker_no != 0 and metas and imports:
-        logger.info(f"[DIAGNOSTIC] Before load_def_from_dict: meta_id={getattr(strategy, 'meta_id', 'NOT_SET')}")
-        logger.info(f"[DIAGNOSTIC] metas keys: {list(metas.keys()) if metas else 'NONE'}")
-        logger.info(f"[DIAGNOSTIC] strategy.meta_name={strategy.meta_name}")
-
         strategy.load_def_from_dict(metas)
-
-        logger.info(f"[DIAGNOSTIC] After load_def_from_dict: meta_id={getattr(strategy, 'meta_id', 'NOT_SET')}")
 
         for parser in strategy.parsers.values():
             parser.load_def_from_dict(metas)
