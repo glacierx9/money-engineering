@@ -1,8 +1,8 @@
 {
   "private": {
-    "markets": ["DCE"],
-    "security_categories": [[1, 2, 3]],
-    "securities": [["COMPOSITE"]],
+    "markets": ["DCE", "SHFE"],
+    "security_categories": [[1, 2, 3], [1, 2, 3]],
+    "securities": [["COMPOSITE"], ["COMPOSITE"]],
     "sample_granularities": {
       "type": "min",
       "cycles": [900],
