@@ -12,7 +12,7 @@
     ],
     "securities": [
       [
-        "i"
+        "m"
       ]
     ],
     "sample_granularities": {
@@ -79,21 +79,21 @@
           },
           {
             "field_type": "double",
-            "display_name": "EMA 12",
+            "display_name": "EMA 15",
             "precision": 6,
             "sample_type": 0,
             "multiple": 1
           },
           {
             "field_type": "double",
-            "display_name": "EMA 26",
+            "display_name": "EMA 30",
             "precision": 6,
             "sample_type": 0,
             "multiple": 1
           },
           {
             "field_type": "double",
-            "display_name": "EMA 50",
+            "display_name": "EMA 60",
             "precision": 6,
             "sample_type": 0,
             "multiple": 1

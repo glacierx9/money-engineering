@@ -1,7 +1,7 @@
 {
   "private": {
     "markets": [
-      "DCE"
+      "SHFE"
     ],
     "security_categories": [
       [
@@ -12,7 +12,7 @@
     ],
     "securities": [
       [
-        "i"
+        "cu"
       ]
     ],
     "sample_granularities": {
@@ -86,14 +86,14 @@
           },
           {
             "field_type": "double",
-            "display_name": "EMA 26",
+            "display_name": "EMA 24",
             "precision": 6,
             "sample_type": 0,
             "multiple": 1
           },
           {
             "field_type": "double",
-            "display_name": "EMA 50",
+            "display_name": "EMA 45",
             "precision": 6,
             "sample_type": 0,
             "multiple": 1

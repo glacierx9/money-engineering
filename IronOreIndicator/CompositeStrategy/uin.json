@@ -1,0 +1,97 @@
+{
+  "global": {
+    "imports": {
+      "SampleQuote": {
+        "fields": [
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume",
+          "turnover"
+        ],
+        "granularities": [900],
+        "revision": 4294967295,
+        "markets": ["DCE", "SHFE"],
+        "security_categories": [[1, 2, 3]],
+        "securities": [["i", "m"], ["cu"]]
+      }
+    }
+  },
+  "private": {
+    "imports": {
+      "IronOreIndicatorRelaxed": {
+        "fields": [
+          "_preserved_field",
+          "bar_index",
+          "close",
+          "signal",
+          "confidence",
+          "regime",
+          "signal_strength",
+          "contracts_to_add",
+          "ema_12",
+          "ema_26",
+          "ema_50",
+          "macd",
+          "rsi",
+          "bb_upper",
+          "bb_lower",
+          "atr"
+        ],
+        "granularities": [900],
+        "markets": ["DCE"],
+        "security_categories": [[1, 2, 3]],
+        "securities": [["i"]]
+      },
+      "CopperIndicator": {
+        "fields": [
+          "_preserved_field",
+          "bar_index",
+          "close",
+          "signal",
+          "confidence",
+          "regime",
+          "signal_strength",
+          "contracts_to_add",
+          "ema_12",
+          "ema_26",
+          "ema_50",
+          "macd",
+          "rsi",
+          "bb_upper",
+          "bb_lower",
+          "atr"
+        ],
+        "granularities": [900],
+        "markets": ["SHFE"],
+        "security_categories": [[1, 2, 3]],
+        "securities": [["cu"]]
+      },
+      "SoybeanIndicator": {
+        "fields": [
+          "_preserved_field",
+          "bar_index",
+          "close",
+          "signal",
+          "confidence",
+          "regime",
+          "signal_strength",
+          "contracts_to_add",
+          "ema_12",
+          "ema_26",
+          "ema_50",
+          "macd",
+          "rsi",
+          "bb_upper",
+          "bb_lower",
+          "atr"
+        ],
+        "granularities": [900],
+        "markets": ["DCE"],
+        "security_categories": [[1, 2, 3]],
+        "securities": [["m"]]
+      }
+    }
+  }
+}

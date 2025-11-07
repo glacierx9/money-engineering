@@ -1,0 +1,85 @@
+{
+  "private": {
+    "markets": ["COMPOSITE"],
+    "security_categories": [[1]],
+    "securities": [["PORTFOLIO"]],
+    "sample_granularities": {
+      "type": "min",
+      "cycles": [900],
+      "cycle_lengths": [0]
+    },
+    "export": {
+      "XXX": {
+        "fields": [
+          "_preserved_field",
+          "bar_index",
+          "active_positions",
+          "total_signals_processed",
+          "portfolio_exposure_pct",
+          "cash_reserve_pct",
+          "nv",
+          "pv"
+        ],
+        "defs": [
+          {
+            "field_type": "int64",
+            "display_name": "Preserved Field",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Bar Index",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Active Positions",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Total Signals Processed",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Portfolio Exposure %",
+            "precision": 6,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Cash Reserve %",
+            "precision": 6,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Net Value",
+            "precision": 6,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Portfolio Value",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          }
+        ],
+        "revision": -1
+      }
+    }
+  }
+}
