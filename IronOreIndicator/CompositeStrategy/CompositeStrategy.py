@@ -244,7 +244,6 @@ class IronOreSignalParser(pcts3.sv_object):
         self.confidence = 0.0
         self.regime = 0
         self.signal_strength = 0.0
-        self.contracts_to_add = 0
 
         # Technical indicators
         self.ema_12 = 0.0
@@ -273,7 +272,6 @@ class CopperSignalParser(pcts3.sv_object):
         self.confidence = 0.0
         self.regime = 0
         self.signal_strength = 0.0
-        self.contracts_to_add = 0
 
         # Technical indicators
         self.ema_12 = 0.0
@@ -302,7 +300,6 @@ class SoybeanSignalParser(pcts3.sv_object):
         self.confidence = 0.0
         self.regime = 0
         self.signal_strength = 0.0
-        self.contracts_to_add = 0
 
         # Technical indicators
         self.ema_12 = 0.0
@@ -369,6 +366,17 @@ class CompositeStrategy(csc3.composite_strategy):
         self.total_signals_processed = 0
         self.portfolio_exposure_pct = 0.0
         self.cash_reserve_pct = 0.0
+
+        # Per-basket metrics (for individual basket P&L visualization)
+        self.basket_0_pv = 0.0
+        self.basket_1_pv = 0.0
+        self.basket_2_pv = 0.0
+        self.basket_0_signal = 0
+        self.basket_1_signal = 0
+        self.basket_2_signal = 0
+        self.basket_0_price = 0.0
+        self.basket_1_price = 0.0
+        self.basket_2_price = 0.0
 
         # Trading statistics (not exported)
         self.total_trades_executed = 0
@@ -532,7 +540,6 @@ class CompositeStrategy(csc3.composite_strategy):
                     'confidence': parser.confidence,
                     'regime': parser.regime,
                     'signal_strength': parser.signal_strength,
-                    'contracts_to_add': parser.contracts_to_add,
                     'ema_12': parser.ema_12,
                     'ema_26': parser.ema_26,
                     'rsi': parser.rsi,
@@ -646,21 +653,21 @@ class CompositeStrategy(csc3.composite_strategy):
                     self._execute_entry(basket_idx, signal_data)
 
     def _should_enter(self, signal_data: Dict) -> bool:
-        """Entry condition checks (relaxed thresholds)"""
-        # Strong signal
+        """Entry condition checks (RELAXED thresholds for more trading)"""
+        # Must have directional signal (1 or -1)
         if signal_data['signal'] == 0:
             return False
 
-        # Moderate confidence (relaxed from 0.60 to 0.50)
-        if signal_data['confidence'] < 0.50:
+        # RELAXED: Moderate confidence (0.30 vs previous 0.50)
+        if signal_data['confidence'] < 0.30:
             return False
 
-        # Avoid chaos
-        if signal_data['regime'] == 4:
-            return False
+        # REMOVED: No chaos regime filter - trade in all regimes
+        # if signal_data['regime'] == 4:
+        #     return False
 
-        # Signal strength (relaxed from 0.50 to 0.40)
-        if signal_data['signal_strength'] < 0.40:
+        # RELAXED: Signal strength (0.25 vs previous 0.40)
+        if signal_data['signal_strength'] < 0.25:
             return False
 
         return True
@@ -688,11 +695,11 @@ class CompositeStrategy(csc3.composite_strategy):
             logger.info(f"EXIT: Confidence dropped for basket {basket_idx} ({market.decode()}/{code.decode()})")
             return True
 
-        # Chaos regime
-        if signal_data['regime'] == 4:
-            market, code = self.basket_to_instrument[basket_idx]
-            logger.info(f"EXIT: Chaos regime for basket {basket_idx} ({market.decode()}/{code.decode()})")
-            return True
+        # REMOVED: No chaos regime exit filter - hold through all regimes
+        # if signal_data['regime'] == 4:
+        #     market, code = self.basket_to_instrument[basket_idx]
+        #     logger.info(f"EXIT: Chaos regime for basket {basket_idx} ({market.decode()}/{code.decode()})")
+        #     return True
 
         return False
 
@@ -837,6 +844,19 @@ class CompositeStrategy(csc3.composite_strategy):
 
         # Cash reserve
         self.cash_reserve_pct = 1.0 - self.portfolio_exposure_pct
+
+        # Update per-basket metrics (for visualization)
+        self.basket_0_pv = self.strategies[0].pv
+        self.basket_1_pv = self.strategies[1].pv
+        self.basket_2_pv = self.strategies[2].pv
+
+        self.basket_0_signal = self.strategies[0].signal
+        self.basket_1_signal = self.strategies[1].signal
+        self.basket_2_signal = self.strategies[2].signal
+
+        self.basket_0_price = self.strategies[0].price
+        self.basket_1_price = self.strategies[1].price
+        self.basket_2_price = self.strategies[2].price
 
     def _get_portfolio_state(self):
         """Get current portfolio state for risk checks"""

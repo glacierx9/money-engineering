@@ -18,7 +18,16 @@
           "portfolio_exposure_pct",
           "cash_reserve_pct",
           "nv",
-          "pv"
+          "pv",
+          "basket_0_pv",
+          "basket_1_pv",
+          "basket_2_pv",
+          "basket_0_signal",
+          "basket_1_signal",
+          "basket_2_signal",
+          "basket_0_price",
+          "basket_1_price",
+          "basket_2_price"
         ],
         "defs": [
           {
@@ -73,6 +82,69 @@
           {
             "field_type": "double",
             "display_name": "Portfolio Value",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 0 PV (Iron Ore)",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 1 PV (Copper)",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 2 PV (Soybean)",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Basket 0 Signal (Iron Ore)",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Basket 1 Signal (Copper)",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "integer",
+            "display_name": "Basket 2 Signal (Soybean)",
+            "precision": 0,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 0 Price (Iron Ore)",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 1 Price (Copper)",
+            "precision": 2,
+            "sample_type": 0,
+            "multiple": 1
+          },
+          {
+            "field_type": "double",
+            "display_name": "Basket 2 Price (Soybean)",
             "precision": 2,
             "sample_type": 0,
             "multiple": 1
