@@ -2,39 +2,40 @@
 """
 # {{NAME}} Indicator Analysis Dashboard
 
-This notebook provides comprehensive analysis and visualization of the
-{{NAME}} indicator, including real-time monitoring and validation.
+This script provides comprehensive analysis and visualization of the
+{{NAME}} indicator, fetching calculated data from the server.
 
 ## Features:
-- Interactive data fetching from the server
-- Real-time indicator visualization
-- Parameter validation against real market data
-- Technical analysis dashboard
-- Parameter optimization recommendations
+- Async data fetching using svr3 module
+- Automatic field detection from StructValues
+- Interactive time series visualization
+- Statistical analysis and distribution plots
+- Compatible with interactive and regular Python modes
 
-Run this in Jupyter notebook for interactive analysis.
+## Usage:
+- Interactive mode (VS Code/Cursor): Run cells directly with await
+- Regular mode: python {{NAME}}_viz.py
+
+Reference: Chapter 10 - Visualization
 """
 
 # %% [markdown]
 # # {{NAME}} Indicator Analytics Dashboard
 #
-# This notebook fetches and analyzes the {{NAME}} indicator's features,
-# focusing on parameter validation, indicator performance, and analysis.
+# Fetches and analyzes {{NAME}} indicator data from server
 
 # %%
-# Core imports for data fetching and analysis
+# Core imports
 import asyncio
 import warnings
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import json
-import math
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import svr3
-import pycaitlynutils3 as pcu3
 
 warnings.filterwarnings("ignore")
 
@@ -45,158 +46,167 @@ sns.set_palette("husl")
 print("📊 {{NAME}} Indicator Dashboard Initialized")
 
 # %% [markdown]
-# ## Data Connection Configuration
+# ## Configuration
 #
-# Configure the connection to fetch {{NAME}} indicator data from
-# the server.
+# Server connection and date range settings
 
 # %%
+# Server configuration
+RAILS_URL = "https://10.99.100.116:4433/private-api/"
+WS_URL = "wss://10.99.100.116:4433/tm"
+TM_MASTER = ("10.99.100.116", 6102)
+TOKEN = "YOUR_TOKEN_HERE"  # TODO: Replace with your actual token
 
+# Date range (YYYYMMDDHHmmss format)
+START_DATE = 20230103203204
+END_DATE = 20230510203204
+
+# Indicator configuration
+INDICATOR_NAME = "{{NAME}}"
+GRANULARITY = 900  # 15-minute (adjust based on your indicator's output granularity)
+NAMESPACE = "private"
+
+# Commodity to visualize (Tier-1: pick ONE commodity; Tier-2: use placeholder)
+MARKET = "DCE"          # Adjust based on your uout.json
+COMMODITY = "i<00>"     # Adjust based on your uout.json
+
+# For Tier-2 composites, use placeholder from uout.json:
+# MARKET = "DCE"
+# COMMODITY = "COMPOSITE<00>"
+
+# %% [markdown]
+# ## Data Fetcher Class
+#
+# Handles server connection and data retrieval using svr3
+
+# %%
 class {{NAME}}DataFetcher:
-    """Data fetcher for {{NAME}} indicator"""
+    """
+    Data fetcher for {{NAME}} indicator using svr3 module
 
-    def __init__(
-        self, start_date: int = 20230101203204, end_date: int = 20250710203204,
-        commodity: str = "i"  # Default commodity
-    ):
-        """
-        Initialize data fetcher for {{NAME}} indicator
+    Implements proper connection lifecycle:
+    - connect() → login → connect → ws_loop → shakehand
+    - fetch() → save_by_symbol()
+    - close() → stop → join
 
-        Args:
-            start_date: Start date in YYYYMMDDHHMMSS format
-            end_date: End date in YYYYMMDDHHMMSS format
-            commodity: Commodity to analyze (i, j, cu, al, rb, sc, TA, fu, MA)
-        """
-        self.start_date = start_date
-        self.end_date = end_date
-        self.commodity = commodity
-        self.token = "YOUR_TOKEN_HERE"  # TODO: Replace with your actual token
+    Reference: WOS Chapter 10 - Pattern 2 (connection reuse)
+    """
 
-        # Determine market for commodity
-        self.market = self._get_market_for_commodity(commodity)
-
-        # Initialize connection for {{NAME}}
-        self.client = svr3.sv_reader(
-            start_date,
-            end_date,
-            "{{NAME}}",  # Indicator name
-            900,  # 15-minute granularity (adjust as needed)
-            "private",
-            "symbol",
-            [self.market],
-            [f"{commodity}<00>"],  # Logical contract
-            False,
-            self.token,
-        )
-
-        # Data storage
+    def __init__(self, token: str, start: int, end: int):
+        self.token = token
+        self.start_date = start
+        self.end_date = end
+        self.client = None
         self.df = None
         self.available_fields = []
 
-    def _get_market_for_commodity(self, commodity: str) -> str:
-        """Determine market for given commodity"""
-        dce_commodities = ['i', 'j', 'm', 'y', 'p', 'c', 'a', 'b', 'v', 'l', 'pp']
-        shfe_commodities = ['cu', 'al', 'zn', 'pb', 'ni', 'sn', 'au', 'ag', 'rb', 'wr', 'hc', 'fu', 'bu', 'ru', 'sc']
-        czce_commodities = ['TA', 'MA', 'FG', 'SR', 'CF', 'RM', 'OI', 'WH', 'AP', 'CJ']
+    async def connect(self):
+        """Establish connection to server (call once)"""
 
-        if commodity in dce_commodities:
-            return "DCE"
-        elif commodity in shfe_commodities:
-            return "SHFE"
-        elif commodity in czce_commodities:
-            return "CZCE"
-        else:
-            raise ValueError(f"Unknown commodity: {commodity}")
+        print(f"🔄 Connecting to server...")
 
-    async def fetch_data(self) -> pd.DataFrame:
+        self.client = svr3.sv_reader(
+            self.start_date,
+            self.end_date,
+            INDICATOR_NAME,
+            GRANULARITY,
+            NAMESPACE,
+            "symbol",
+            [MARKET],
+            [COMMODITY],
+            False,                  # No persistent file
+            RAILS_URL,
+            WS_URL,
+            "",                     # Username (blank)
+            "",                     # Password (blank)
+            TM_MASTER,
+        )
+        self.client.token = self.token
+
+        # Connection lifecycle
+        await self.client.login()
+        await self.client.connect()
+        self.client.ws_task = asyncio.create_task(self.client.ws_loop())
+        await self.client.shakehand()
+
+        print(f"✓ Connected to server")
+
+    async def fetch(self, market: str, code: str) -> pd.DataFrame:
         """
-        Fetch {{NAME}} indicator data from server
+        Fetch data for specified market/code
+
+        Args:
+            market: Market identifier (e.g., "DCE", "SHFE")
+            code: Commodity code (e.g., "i<00>", "cu<00>")
 
         Returns:
             DataFrame with all indicator fields
         """
-        print(f"Fetching {{NAME}} data for {self.commodity}<00>...")
-        print(f"Date range: {self.start_date} to {self.end_date}")
 
-        # Read data using svr3
-        await self.client.read()
+        print(f"📊 Fetching {market}/{code}...")
 
-        # Get first available namespace and meta_id
-        namespaces = list(self.client.data.keys())
-        if not namespaces:
-            raise ValueError("No data received from server")
+        # Update markets/codes and reuse connection
+        self.client.markets = [market]
+        self.client.codes = [code]
 
-        first_ns = namespaces[0]
-        meta_ids = list(self.client.data[first_ns].keys())
-        if not meta_ids:
-            raise ValueError("No meta_ids in namespace")
+        # Fetch data - returns List[Dict]
+        ret = await self.client.save_by_symbol()
+        data = ret[1][1]  # Extract List[Dict] from result tuple
 
-        first_meta = meta_ids[0]
+        if not data:
+            print(f"⚠ No data returned for {market}/{code}")
+            return pd.DataFrame()
 
-        print(f"Found namespace: {first_ns}, meta_id: {first_meta}")
+        # Convert List[Dict] to DataFrame
+        # Each dict contains header fields (time_tag, granularity, market, code, namespace)
+        # plus all fields from uout.json
+        df = pd.DataFrame(data)
 
-        # Extract data from client
-        data_dict = self.client.data[first_ns][first_meta]
+        # Store available fields (exclude header fields)
+        header_fields = ['time_tag', 'granularity', 'market', 'code', 'namespace']
+        self.available_fields = [col for col in df.columns if col not in header_fields]
 
-        # Get available fields from the data
-        if data_dict:
-            first_key = next(iter(data_dict))
-            sample_data = data_dict[first_key]
-            self.available_fields = [field for field in dir(sample_data)
-                                    if not field.startswith('_') and
-                                    not callable(getattr(sample_data, field))]
-            print(f"Available fields: {self.available_fields}")
+        # Convert time_tag (unix ms) to datetime
+        if 'time_tag' in df.columns:
+            df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
+            df = df.sort_values('datetime')
 
-        # Convert to DataFrame
-        rows = []
-        for timestamp, sv_data in data_dict.items():
-            row = {'timestamp': timestamp}
-
-            # Extract all fields from sv_object
-            for field in self.available_fields:
-                try:
-                    value = getattr(sv_data, field)
-                    # Convert bytes to string if needed
-                    if isinstance(value, bytes):
-                        value = value.decode('utf-8')
-                    row[field] = value
-                except AttributeError:
-                    row[field] = None
-
-            rows.append(row)
-
-        df = pd.DataFrame(rows)
-
-        # Convert timestamp to datetime
-        df['datetime'] = pd.to_datetime(df['timestamp'].astype(str), format='%Y%m%d%H%M%S')
-        df = df.sort_values('datetime')
-
-        # Store for later use
         self.df = df
 
         print(f"✓ Loaded {len(df)} data points")
-        print(f"Date range: {df['datetime'].min()} to {df['datetime'].max()}")
+        if 'datetime' in df.columns:
+            print(f"  Date range: {df['datetime'].min()} to {df['datetime'].max()}")
+        print(f"  Available fields: {', '.join(self.available_fields[:5])}...")
 
         return df
 
+    async def close(self):
+        """Clean up connection"""
+
+        if self.client:
+            self.client.stop()
+            await self.client.join()
+            print("✓ Connection closed")
+
     def get_summary(self) -> Dict:
         """Get summary statistics of the indicator data"""
-        if self.df is None:
+
+        if self.df is None or self.df.empty:
             return {}
 
         summary = {
             'total_points': len(self.df),
-            'date_range': (self.df['datetime'].min(), self.df['datetime'].max()),
             'fields': self.available_fields,
-            'commodity': self.commodity,
-            'market': self.market
         }
+
+        if 'datetime' in self.df.columns:
+            summary['date_range'] = (self.df['datetime'].min(), self.df['datetime'].max())
 
         # Add basic statistics for numeric fields
         numeric_fields = self.df.select_dtypes(include=[np.number]).columns
         summary['statistics'] = {}
         for field in numeric_fields:
-            if field != 'timestamp':
+            if field not in ['timetag', 'bar_index']:
                 summary['statistics'][field] = {
                     'mean': self.df[field].mean(),
                     'std': self.df[field].std(),
@@ -206,152 +216,270 @@ class {{NAME}}DataFetcher:
 
         return summary
 
-
 # %% [markdown]
-# ## Fetch Data
+# ## Fetch Data from Server
 #
-# Load {{NAME}} indicator data from the server
+# Connect and retrieve {{NAME}} indicator data
 
 # %%
-# Initialize fetcher
-fetcher = {{NAME}}DataFetcher(
-    start_date=20250701203204,  # Adjust date range as needed
-    end_date=20250710203204,
-    commodity="i"  # Change to your target commodity
-)
+async def fetch_indicator_data():
+    """Main data fetching function"""
 
-# Fetch data
-df = await fetcher.fetch_data()
+    fetcher = {{NAME}}DataFetcher(TOKEN, START_DATE, END_DATE)
 
-# Display summary
-summary = fetcher.get_summary()
-print("\n📊 Data Summary:")
-print(f"Total data points: {summary['total_points']}")
-print(f"Commodity: {summary['commodity']} ({summary['market']})")
-print(f"Date range: {summary['date_range'][0]} to {summary['date_range'][1]}")
-print(f"\nAvailable fields: {', '.join(summary['fields'])}")
+    try:
+        # Connect to server
+        await fetcher.connect()
+
+        # Fetch data for specified market/commodity
+        df = await fetcher.fetch(MARKET, COMMODITY)
+
+        # Display summary
+        summary = fetcher.get_summary()
+        if summary:
+            print("\n" + "="*60)
+            print("📊 Data Summary:")
+            print("="*60)
+            print(f"Total data points: {summary['total_points']}")
+            if 'date_range' in summary:
+                print(f"Date range: {summary['date_range'][0]} to {summary['date_range'][1]}")
+            print(f"\nAvailable fields ({len(summary['fields'])}):")
+            for field in summary['fields']:
+                print(f"  - {field}")
+
+        return fetcher, df
+
+    except Exception as e:
+        print(f"❌ Error fetching data: {e}")
+        await fetcher.close()
+        raise
+
+# Fetch data (compatible with interactive and regular modes)
+try:
+    # Interactive mode (VS Code/Cursor notebooks)
+    fetcher, df = await fetch_indicator_data()
+except SyntaxError:
+    # Regular mode (Python interpreter)
+    async def main():
+        return await fetch_indicator_data()
+    fetcher, df = asyncio.run(main())
 
 # Display first few rows
-print("\n📋 Sample data:")
-print(df.head())
+if not df.empty:
+    print("\n📋 Sample data (first 5 rows):")
+    print(df.head())
 
 # %% [markdown]
-# ## Basic Visualization
+# ## Time Series Visualization
 #
-# Create basic plots to visualize indicator values
+# Plot indicator values over time
 
 # %%
-# TODO: Customize these plots based on your indicator's output fields
+def plot_time_series(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
+    """
+    Plot time series for specified fields
 
-# Example: Plot indicator value over time
-if 'indicator_value' in df.columns:
-    plt.figure(figsize=(15, 6))
-    plt.plot(df['datetime'], df['indicator_value'], label='Indicator Value', linewidth=1.5)
-    plt.xlabel('Date')
-    plt.ylabel('Indicator Value')
-    plt.title(f'{{NAME}} - Indicator Value Over Time')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    Args:
+        df: DataFrame with indicator data
+        fields: List of field names to plot
+        max_plots: Maximum number of plots to show
+    """
+
+    if df.empty or 'datetime' not in df.columns:
+        print("⚠ No datetime data available for plotting")
+        return
+
+    # Filter fields that exist and are numeric
+    plot_fields = [f for f in fields if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    plot_fields = plot_fields[:max_plots]
+
+    if not plot_fields:
+        print("⚠ No numeric fields available for plotting")
+        return
+
+    n_plots = len(plot_fields)
+    fig, axes = plt.subplots(n_plots, 1, figsize=(15, 4 * n_plots))
+
+    if n_plots == 1:
+        axes = [axes]
+
+    for idx, field in enumerate(plot_fields):
+        axes[idx].plot(df['datetime'], df[field], linewidth=1.5, alpha=0.8)
+        axes[idx].set_xlabel('Date')
+        axes[idx].set_ylabel(field)
+        axes[idx].set_title(f'{{NAME}} - {field} Over Time')
+        axes[idx].grid(True, alpha=0.3)
+
+        # Add zero line if data crosses zero
+        if df[field].min() < 0 < df[field].max():
+            axes[idx].axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+
     plt.tight_layout()
+    plt.savefig(f'{{NAME}}_time_series_{START_DATE}_{END_DATE}.png', dpi=150, bbox_inches='tight')
+    print(f"✓ Saved: {{NAME}}_time_series_{START_DATE}_{END_DATE}.png")
     plt.show()
 
-# Example: Plot signals if available
-if 'signal' in df.columns:
-    plt.figure(figsize=(15, 4))
-    plt.plot(df['datetime'], df['signal'], label='Signal', linewidth=1.5)
-    plt.xlabel('Date')
-    plt.ylabel('Signal')
-    plt.title(f'{{NAME}} - Trading Signals')
-    plt.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-
-# %% [markdown]
-# ## Statistical Analysis
-#
-# Analyze the statistical properties of your indicator
-
-# %%
-# Display statistics for numeric fields
-print("📊 Statistical Analysis:")
-print("="* 60)
-
-for field, stats in summary['statistics'].items():
-    print(f"\n{field}:")
-    print(f"  Mean: {stats['mean']:.4f}")
-    print(f"  Std:  {stats['std']:.4f}")
-    print(f"  Min:  {stats['min']:.4f}")
-    print(f"  Max:  {stats['max']:.4f}")
+# Plot time series for available fields
+if not df.empty and fetcher.available_fields:
+    plot_time_series(df, fetcher.available_fields, max_plots=6)
 
 # %% [markdown]
 # ## Distribution Analysis
 #
-# Visualize the distribution of indicator values
+# Visualize distribution of indicator values
 
 # %%
-# Plot histograms for numeric fields (excluding timestamp)
-numeric_cols = df.select_dtypes(include=[np.number]).columns
-plot_cols = [col for col in numeric_cols if col not in ['timestamp', 'bar_index']]
+def plot_distributions(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
+    """
+    Plot distributions for specified fields
 
-if plot_cols:
-    n_cols = len(plot_cols)
-    fig, axes = plt.subplots((n_cols + 1) // 2, 2, figsize=(15, 4 * ((n_cols + 1) // 2)))
-    axes = axes.flatten() if n_cols > 1 else [axes]
+    Args:
+        df: DataFrame with indicator data
+        fields: List of field names to plot
+        max_plots: Maximum number of plots to show
+    """
 
-    for idx, col in enumerate(plot_cols):
-        axes[idx].hist(df[col].dropna(), bins=50, alpha=0.7, edgecolor='black')
-        axes[idx].set_xlabel(col)
+    if df.empty:
+        print("⚠ No data available for plotting")
+        return
+
+    # Filter numeric fields
+    plot_fields = [f for f in fields if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    plot_fields = plot_fields[:max_plots]
+
+    if not plot_fields:
+        print("⚠ No numeric fields available for plotting")
+        return
+
+    n_plots = len(plot_fields)
+    n_cols = 2
+    n_rows = (n_plots + 1) // 2
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 4 * n_rows))
+    axes = axes.flatten() if n_plots > 1 else [axes]
+
+    for idx, field in enumerate(plot_fields):
+        data = df[field].dropna()
+        axes[idx].hist(data, bins=50, alpha=0.7, edgecolor='black')
+        axes[idx].set_xlabel(field)
         axes[idx].set_ylabel('Frequency')
-        axes[idx].set_title(f'Distribution of {col}')
+        axes[idx].set_title(f'Distribution of {field}')
         axes[idx].grid(True, alpha=0.3)
 
+        # Add mean line
+        mean_val = data.mean()
+        axes[idx].axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.4f}')
+        axes[idx].legend()
+
     # Hide unused subplots
-    for idx in range(len(plot_cols), len(axes)):
+    for idx in range(len(plot_fields), len(axes)):
         axes[idx].axis('off')
 
     plt.tight_layout()
+    plt.savefig(f'{{NAME}}_distributions_{START_DATE}_{END_DATE}.png', dpi=150, bbox_inches='tight')
+    print(f"✓ Saved: {{NAME}}_distributions_{START_DATE}_{END_DATE}.png")
     plt.show()
 
+# Plot distributions
+if not df.empty and fetcher.available_fields:
+    plot_distributions(df, fetcher.available_fields, max_plots=6)
+
 # %% [markdown]
-# ## Time Series Analysis
+# ## Statistical Summary
 #
-# Analyze time series properties
+# Display detailed statistics
 
 # %%
-# Plot all numeric fields over time
-if plot_cols:
-    fig, axes = plt.subplots(len(plot_cols), 1, figsize=(15, 4 * len(plot_cols)))
-    if len(plot_cols) == 1:
-        axes = [axes]
+def print_statistics(summary: Dict):
+    """Print formatted statistics"""
 
-    for idx, col in enumerate(plot_cols):
-        axes[idx].plot(df['datetime'], df[col], linewidth=1.5)
-        axes[idx].set_xlabel('Date')
-        axes[idx].set_ylabel(col)
-        axes[idx].set_title(f'{{NAME}} - {col} Over Time')
-        axes[idx].grid(True, alpha=0.3)
+    if not summary or 'statistics' not in summary:
+        print("⚠ No statistics available")
+        return
 
+    print("\n" + "="*80)
+    print("📊 Statistical Analysis:")
+    print("="*80)
+
+    for field, stats in summary['statistics'].items():
+        print(f"\n{field}:")
+        print(f"  Mean:  {stats['mean']:>12.6f}")
+        print(f"  Std:   {stats['std']:>12.6f}")
+        print(f"  Min:   {stats['min']:>12.6f}")
+        print(f"  Max:   {stats['max']:>12.6f}")
+        print(f"  Range: {stats['max'] - stats['min']:>12.6f}")
+
+# Print statistics
+summary = fetcher.get_summary()
+if summary:
+    print_statistics(summary)
+
+# %% [markdown]
+# ## Correlation Analysis (if multiple fields)
+#
+# Analyze correlations between indicator fields
+
+# %%
+def plot_correlation_matrix(df: pd.DataFrame, fields: List[str]):
+    """
+    Plot correlation matrix for numeric fields
+
+    Args:
+        df: DataFrame with indicator data
+        fields: List of field names to include
+    """
+
+    if df.empty:
+        print("⚠ No data available for correlation analysis")
+        return
+
+    # Filter numeric fields
+    numeric_fields = [f for f in fields if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+
+    if len(numeric_fields) < 2:
+        print("⚠ Need at least 2 numeric fields for correlation analysis")
+        return
+
+    # Compute correlation matrix
+    corr_df = df[numeric_fields].corr()
+
+    # Plot heatmap
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(corr_df, annot=True, fmt='.3f', cmap='coolwarm', center=0,
+                square=True, linewidths=1, cbar_kws={"shrink": 0.8})
+    plt.title(f'{{NAME}} - Field Correlation Matrix')
     plt.tight_layout()
+    plt.savefig(f'{{NAME}}_correlation_{START_DATE}_{END_DATE}.png', dpi=150, bbox_inches='tight')
+    print(f"✓ Saved: {{NAME}}_correlation_{START_DATE}_{END_DATE}.png")
     plt.show()
 
+# Plot correlation matrix
+if not df.empty and len(fetcher.available_fields) >= 2:
+    plot_correlation_matrix(df, fetcher.available_fields)
+
 # %% [markdown]
-# ## Custom Analysis
+# ## Cleanup
 #
-# Add your custom analysis and visualizations here based on your indicator's specific features
+# Close server connection
 
 # %%
-# TODO: Add custom analysis specific to your indicator
-# Examples:
-# - Correlation analysis between different fields
-# - Performance metrics calculation
-# - Signal accuracy analysis
-# - Parameter sensitivity analysis
+async def cleanup():
+    """Close connection gracefully"""
+    await fetcher.close()
 
-print("✅ Visualization complete!")
+# Cleanup (compatible with both modes)
+try:
+    await cleanup()
+except SyntaxError:
+    asyncio.run(cleanup())
+
+print("\n✅ Visualization complete!")
+print(f"\nGenerated files:")
+print(f"  - {{NAME}}_time_series_{START_DATE}_{END_DATE}.png")
+print(f"  - {{NAME}}_distributions_{START_DATE}_{END_DATE}.png")
+print(f"  - {{NAME}}_correlation_{START_DATE}_{END_DATE}.png")
 print("\nNext steps:")
-print("1. Customize the plots based on your indicator's specific fields")
-print("2. Add performance metrics and validation logic")
-print("3. Implement parameter optimization analysis")
-print("4. Save important plots for documentation")
+print("  1. Review the generated plots")
+print("  2. Customize analysis based on your indicator's specific fields")
+print("  3. Add custom metrics and performance analysis")
+print("  4. Adjust date ranges and commodities as needed")

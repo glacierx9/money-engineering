@@ -668,6 +668,121 @@ Before running your indicator, verify:
 - [ ] Precision values are appropriate
 - [ ] Field names match Python class attributes
 
+---
+
+## Output StructValue Patterns and Visualization
+
+### Understanding Output Multiplicity
+
+**StructValue Index**: (meta_id, granularity, market, stock_code, time_tag)
+
+| Component | Tier-1 Indicator | Tier-2 Composite |
+|-----------|------------------|------------------|
+| **meta_id** | Fixed (one per indicator) | Fixed (one per strategy) |
+| **granularity** | Fixed (from uout.json) | Fixed (from uout.json) |
+| **market** | Multiple markets | Single market (placeholder) |
+| **stock_code** | Multiple securities | Single placeholder (`<00>`, `<01>`) |
+| **Output Count** | N × M (markets × securities) | 1 (single synthetic) |
+
+### Tier-1 Output Pattern
+
+**Configuration**:
+```json
+{
+  "markets": ["DCE", "SHFE"],
+  "securities": [["i", "j"], ["cu", "al", "rb"]]
+}
+```
+
+**Outputs Generated**:
+- `DCE/i<00>` (iron ore on DCE)
+- `DCE/j<00>` (coking coal on DCE)
+- `SHFE/cu<00>` (copper on SHFE)
+- `SHFE/al<00>` (aluminum on SHFE)
+- `SHFE/rb<00>` (rebar on SHFE)
+
+Total: 5 separate StructValue streams
+
+**Visualization**: Pick ONE commodity as example
+```python
+# Query one commodity
+market = "SHFE"
+code = "cu<00>"  # Copper
+```
+
+### Tier-2 Output Pattern
+
+**Configuration**:
+```json
+{
+  "markets": ["DCE"],
+  "securities": [["COMPOSITE"]]
+}
+```
+
+**Outputs Generated**:
+- `DCE/COMPOSITE<00>` (single synthetic instrument)
+
+Total: 1 StructValue stream
+
+**Real Exposures**: Stored in StructValue fields (not in market/code)
+- Fields like `markets`, `codes`, `positions` define actual basket holdings
+
+**Visualization**: Use the single placeholder
+```python
+# Query the placeholder
+market = "DCE"  # Or whatever market in uout.json
+code = "COMPOSITE<00>"  # Or whatever securities field
+```
+
+### securities Field Semantics
+
+**Tier-1 Indicators**:
+- `securities` = List of actual commodities to calculate
+- Each commodity gets its own StructValue output
+- Framework generates (market, commodity) pairs automatically
+
+**Tier-2 Composites**:
+- `securities` = Placeholder name (e.g., "COMPOSITE", "PORTFOLIO")
+- Single output with placeholder stock_code
+- Actual positions stored in StructValue fields
+
+### Querying Calculated Data
+
+Use svr3 module to fetch StructValues from server:
+
+```python
+import svr3
+
+# Tier-1: Query one commodity
+client = svr3.sv_reader(
+    start, end,
+    "MyIndicator",  # Indicator name
+    900,            # Granularity
+    "private",
+    "symbol",
+    ["SHFE"],       # Market from uout.json
+    ["cu<00>"],     # ONE commodity to visualize
+    # ... other params
+)
+
+# Tier-2: Query the placeholder
+client = svr3.sv_reader(
+    start, end,
+    "MyComposite",  # Strategy name
+    300,
+    "private",
+    "symbol",
+    ["DCE"],        # Market from uout.json
+    ["COMPOSITE<00>"],  # Placeholder from uout.json
+    # ... other params
+)
+```
+
+**Reference**: See Chapter 10 - Visualization for complete svr3 usage patterns.
+
+---
+
 ## Summary
 
 Configuration files are critical for indicator operation:
