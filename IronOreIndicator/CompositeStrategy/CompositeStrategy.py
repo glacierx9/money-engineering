@@ -822,11 +822,13 @@ class CompositeStrategy(csc3.composite_strategy):
 
             # ONE-TIME allocation per basket (framework constraint)
             # This permanently transfers capital from composite to basket
-            self._allocate(basket_idx, market, instrument_code, basket_capital, 1.0)
+            # CRITICAL: Set max leverage at allocation to enable dynamic leverage in _fit_position()
+            # Without this, contract sizing will be capped at 1.0x even if _fit_position() sets higher leverage
+            self._allocate(basket_idx, market, instrument_code, basket_capital, self.max_leverage)
 
             basket = self.strategies[basket_idx]
             logger.info(f"Basket {basket_idx}: {market.decode()}/{code.decode()} "
-                       f"allocated ¥{basket_capital:,.0f} (30%)")
+                       f"allocated ¥{basket_capital:,.0f} (30%) with max leverage {self.max_leverage}x")
 
         logger.info(f"Composite cash after allocation: ¥{self.cash:,.0f} "
                    f"({self.cash/initial_cash*100:.1f}% reserve)")
