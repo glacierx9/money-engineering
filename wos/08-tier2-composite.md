@@ -175,12 +175,15 @@ class MyComposite(csc3.composite_strategy):
         self.code = b'COMPOSITE'
         self.meta_name = "MyComposite"
         self.revision = (1 << 32) - 1
-        self.timetag_ = None
+        self.timetag = None  # FIXED: was timetag_ (incorrect)
 
         # Output fields
         self.bar_index = 0
         self.active_positions = 0
         self.total_signals_processed = 0
+
+        # Initialization tracking (NOT persisted)
+        self.bar_since_start = 0
 
         # Risk parameters
         self.max_leverage = 2.5
@@ -196,9 +199,11 @@ class MyComposite(csc3.composite_strategy):
         logger.info(f"Initialized {BASKET_COUNT} baskets")
 
     def on_bar(self, bar: pc.StructValue):
-        """Main bar processing."""
-        market = bar.get_market()
-        code = bar.get_stock_code()
+        """Main bar processing.
+
+        CRITICAL: Data leakage prevention - cache Tier 1 signals,
+        process cycle with OLD signals, then signals used for NEXT cycle.
+        """
         tm = bar.get_time_tag()
         ns = bar.get_namespace()
         meta_id = bar.get_meta_id()
@@ -207,20 +212,24 @@ class MyComposite(csc3.composite_strategy):
         if self.timetag is None:
             self.timetag = tm
 
-        # Handle cycle boundaries
+        # CRITICAL: Handle cycle boundaries FIRST (with OLD signals)
         if self.timetag < tm:
+            # 1. Process with OLD cached signals (prevent data leakage)
             self._on_cycle_pass(tm)
 
+            # 2. Output
             results = []
             if self.bar_index > 0:
                 results.append(self.sv_copy())
 
+            # 3. Update for next cycle
             self.timetag = tm
             self.bar_index += 1
+            self.bar_since_start += 1
 
             return results
 
-        # Process Tier 1 signals
+        # CRITICAL: Cache Tier 1 signals AFTER cycle pass (for NEXT cycle)
         self._process_tier1_signal(bar)
 
         return []
@@ -589,12 +598,23 @@ def calculate_allocation(self, signal_data):
 - Tracks performance at portfolio level
 - Uses `composite_strategyc3` base class
 
+**Critical Patterns** (from organic/fix001.md):
+- **Data Leakage Prevention**: Cache Tier 1 signals AFTER `_on_cycle_pass()`, use for NEXT cycle
+- **Initialization Tracking**: Use `bar_since_start` (NOT persisted) for warm-up detection
+- **Timetag Management**: Use `self.timetag` (NOT `self.timetag_`)
+
+**Cross-References**:
+- **Chapter 5**: Stateless design and reconciliation patterns
+- **Chapter 7**: Complete on_bar() pattern with data leakage prevention
+- **organic/fix001.md**: Critical framework patterns and timing rules
+
 **Critical Requirements** ⚠️:
 1. **MUST implement `on_reference()` callback** - Forwards to `strategy.on_reference()`
 2. **MUST implement `on_tradeday_begin()` callback** - Triggers contract rolling
 3. **MUST implement `on_tradeday_end()` callback** - Handles end-of-day settlement
-4. **`_allocate()` only initializes structure** - Contract info populated by callbacks
-5. **`target_instrument` populated by rolling mechanism** - Not by `_allocate()`
+4. **Cache Tier 1 signals AFTER cycle pass** - Prevent data leakage (cycle t must NOT use signals from t+1)
+5. **`_allocate()` only initializes structure** - Contract info populated by callbacks
+6. **`target_instrument` populated by rolling mechanism** - Not by `_allocate()`
 
 **Failure to implement callbacks** → `target_instrument` stays empty → no market data routing → basket trading fails.
 

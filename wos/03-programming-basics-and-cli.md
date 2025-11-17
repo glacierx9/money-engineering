@@ -209,6 +209,117 @@ class MyStrategy(pcts3.sv_object):
         self.overwrite = overwrite  # Use global setting
 ```
 
+## Package Imports
+
+### Standard Framework Imports
+
+**Always use direct imports for WallE packages:**
+
+```python
+# ✅ CORRECT - Direct imports (current standard)
+from WallE.sqsm.extractor import Extractor, FeatureLoader
+from WallE.sqsm.inference import InferenceClient
+from WallE.ml.feature_engineering import FeatureTransformer
+```
+
+**Never use try/except fallback pattern:**
+
+```python
+# ❌ WRONG - Legacy pattern (outdated)
+try:
+    from WallE.sqsm.extractor import Extractor
+except ImportError:
+    from sqsm.extractor import Extractor  # WRONG! Causes confusion
+```
+
+**Rationale**: All WallE packages are now properly distributed and installed. The try/except pattern was used for local debugging but is no longer needed and causes import confusion.
+
+**Reference**: See `export_walle.py` for complete list of available WallE packages.
+
+### Core Framework Imports
+
+**Required imports for all strategies:**
+
+```python
+import pycaitlyn as pc              # Core framework
+import pycaitlynts3 as pcts3        # sv_object base class
+import pycaitlynutils3 as pcu3      # Utilities (logging, time parsing)
+```
+
+**Optional imports based on strategy type:**
+
+```python
+import strategyc3 as sc3                    # Tier 3 (execution)
+import composite_strategyc3 as csc3         # Tier 2 (portfolio)
+from collections import deque               # Bounded collections
+import math                                 # Math operations
+```
+
+## Time Format Handling
+
+### Standard Time Format
+
+**Framework standard: Milliseconds since epoch**
+
+All `timetag` values from StructValue instances use milliseconds since Unix epoch:
+
+```python
+# Extract timetag from bar
+tm = bar.get_time_tag()  # Returns: milliseconds since epoch (int)
+
+# Example: 2025-01-15 09:30:00 → 1705304400000
+```
+
+### Time Conversion Functions
+
+**pycaitlynutils3 provides rich time APIs:**
+
+| Function | Purpose | Example |
+|----------|---------|---------|
+| `pcu3.ts_parse(timetag)` | ms → human-readable string | `"2025-01-15 09:30:00"` |
+| `pcu3.ts_to_datetime(timetag)` | ms → datetime object | `datetime(2025, 1, 15, 9, 30)` |
+| `pcu3.datetime_to_ts(dt)` | datetime → ms | `1705304400000` |
+
+**Example usage:**
+
+```python
+def on_bar(self, bar):
+    tm = bar.get_time_tag()  # ms since epoch
+
+    # Convert for logging
+    timestamp_str = pcu3.ts_parse(tm)
+    logger.info(f"Processing bar at {timestamp_str}")
+
+    # Convert for calculations
+    dt = pcu3.ts_to_datetime(tm)
+    hour = dt.hour
+    if 9 <= hour < 11:  # Morning session
+        # ... process
+        pass
+```
+
+### Converting to/from Other Formats
+
+**YYYYMMDDhhmmss format (for inference servers):**
+
+```python
+# CLI typically uses YYYYmmddHHMMSS
+current_time_str = "20250115093000"  # From inference server
+
+# Convert to ms since epoch for framework
+from datetime import datetime
+dt = datetime.strptime(current_time_str, "%Y%m%d%H%M%S")
+timetag_ms = int(dt.timestamp() * 1000)
+
+# Convert back when needed
+dt = pcu3.ts_to_datetime(timetag_ms)
+current_time_str = dt.strftime("%Y%m%d%H%M%S")
+```
+
+**Key Principle**: Always store and manipulate time as milliseconds since epoch internally. Convert only at boundaries (CLI input, external API calls, logging).
+
+**Reference**: See `pycaitlynutils3.py` for complete time API documentation.
+
 ## Required Callbacks
 
 ### Initialization Flow

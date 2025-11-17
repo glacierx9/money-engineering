@@ -340,17 +340,75 @@ if code == b'rb<00>':  # Logical contract check
 
 ### Files Updated
 
-**Major updates**:
-- wos/04-structvalue-and-sv_object.md (3 sections: to_sv/from_sv pattern, reconciliation, serialization mechanics)
-- wos/05-stateless-design.md (4 sections: bar_since_start, initialization, reconciliation principle, timetag cleanup)
-- wos/07-tier1-indicator.md (7 sections: complete on_bar pattern, data leakage prevention, initialization tracking, reconciliation implementation, timetag cleanup, bar_since_start usage, overwrite mode handling)
+**Templates** (2025-11-16):
+- templates/indicator.py.template (complete rewrite with all critical patterns)
+- templates/composite.py.template (cycle handling, data leakage prevention, on_reference fix)
 
-**Minor updates**:
-- wos/03-programming-basics-and-cli.md (2 sections: package imports, time formats)
-- wos/08-tier2-composite.md (1 section: reconciliation reference)
-- wos/12-example-project.md (2 sections: updated patterns in examples)
-- CLI_USAGE.md (1 note: securities format clarification)
-- create_project.py (2 inline comments: uout.json securities format)
+**Documentation - Chapter 4** (2025-11-17):
+- wos/04-structvalue-and-sv_object.md:
+  - Fixed terminology: from_sv() ↔ to_sv() (not copy_to_sv)
+  - Added reconciliation pattern section (~95 lines)
+  - Condensed Overview (50→20 words, 2.5x information density)
+  - Added flexibility note for vector-to-scalar patterns
+
+**Documentation - Chapter 7** (2025-11-17):
+- wos/07-tier1-indicator.md (CRITICAL - most extensive update):
+  - Completely rewrote on_bar() implementation with data leakage prevention
+  - Added MAX_BAR_REBUILD constant and initialization tracking
+  - Added reconciliation pattern (latest_sv, _from_sv, _reconcile)
+  - Fixed cycle boundary handling section with 5-step pattern
+  - Updated vector-to-scalar example (to_sv instead of copy_to_sv)
+  - Condensed Overview (2 sentences → 1 line)
+  - Updated Summary with critical patterns table
+
+**Documentation - Chapter 5** (2025-11-17):
+- wos/05-stateless-design.md:
+  - Fixed data leakage in Stateless Indicator example (lines 871-911)
+  - Fixed data leakage in Multi-Source Indicator example (lines 1154-1184)
+  - Added "Data Leakage" to Common Issues table
+  - Elevated to CRITICAL #0 in Key Takeaways
+
+**Documentation - Chapter 3** (2025-11-17):
+- wos/03-programming-basics-and-cli.md:
+  - Added "Package Imports" section (direct WallE imports, no try/except)
+  - Added "Time Format Handling" section (ms since epoch, conversion APIs)
+  - Documented pcu3 time functions with examples
+
+**Documentation - Chapter 8** (2025-11-17):
+- wos/08-tier2-composite.md:
+  - Fixed timetag_ → timetag (line 178)
+  - Fixed data leakage: cache Tier 1 signals AFTER _on_cycle_pass()
+  - Added bar_since_start initialization tracking
+  - Updated Summary with Critical Patterns and Cross-References
+
+### Documentation Status
+
+**Completed** (2025-11-17):
+- ✅ Chapter 3: Package imports + time formats
+- ✅ Chapter 4: Terminology fix + conciseness + reconciliation
+- ✅ Chapter 5: Data leakage prevention in examples
+- ✅ Chapter 7: Complete rewrite with all critical patterns
+- ✅ Chapter 8: Data leakage fix + cross-references
+
+**Remaining** (lower priority):
+- Chapter 12 (wos/12-example-project.md): Update examples to match new patterns
+
+### Impact
+
+**Severity**: CRITICAL - Affects production correctness
+
+**Data Leakage Impact**:
+- Without fix: Cycle t uses data from t+1 → incorrect backtests, live trading errors
+- With fix: Proper timing enforced, correct results guaranteed
+
+**Documentation Quality**:
+- Before: Patterns scattered, some implicit, verbose prose
+- After: All patterns explicit, structured, concise, with working code examples
+
+**Developer Experience**:
+- All critical patterns now documented with complete working examples
+- Cross-references connect related concepts across chapters
+- Common mistakes explicitly called out with ❌/✅ comparisons
 
 **Version updates**:
 - All affected wos/*.md files: Version incremented, "Last Updated" set to 2025-11-14

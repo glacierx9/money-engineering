@@ -755,6 +755,7 @@ class ReplayConsistentIndicator(pcts3.sv_object):
 
 | Issue | ❌ Anti-Pattern | ✅ Solution |
 |-------|----------------|------------|
+| **Data Leakage** | `quote.from_sv(bar)` before `_on_cycle_pass()` | Update imports AFTER `_on_cycle_pass()` |
 | **Growing Memory** | `self.all_prices = []` (unbounded list) | `self.prices = deque(maxlen=100)` (bounded) |
 | **Non-Determinism** | `random.random()` (different each run) | `(bar_index * 9301) % 233280` (deterministic) |
 | **External State** | `cached_data = {}` (global dict) | `self.ema = 0.0` (instance variable) |
@@ -869,38 +870,44 @@ class StatelessIndicator(pcts3.sv_object):
         self.quote.set_global_imports(imports)
 
     def on_bar(self, bar: pc.StructValue):
-        """Process bar with guaranteed replay consistency."""
+        """Process bar with guaranteed replay consistency.
+
+        CRITICAL: Data leakage prevention - import updates AFTER _on_cycle_pass().
+        """
         # Filter for our instrument
         if bar.get_market() != self.market or bar.get_stock_code() != self.code:
             return []
 
-        # Parse quote data
-        if bar.get_namespace() == self.quote.namespace and \
-           bar.get_meta_id() == self.quote.meta_id:
-            self.quote.market = self.market
-            self.quote.code = self.code
-            self.quote.granularity = bar.get_granularity()
-            self.quote.from_sv(bar)
-        else:
-            return []
-
         tm = bar.get_time_tag()
+        ns = bar.get_namespace()
+        meta_id = bar.get_meta_id()
 
         # Initialize timetag
         if self.timetag is None:
             self.timetag = tm
 
-        # Handle cycle boundary
+        # CRITICAL: Handle cycle boundary FIRST
         if self.timetag < tm:
+            # 1. Process with OLD data (prevent data leakage)
             self._on_cycle_pass()
 
+            # 2. Output
             results = []
             if self.bar_index > 0:
                 results.append(self.copy_to_sv())
 
+            # 3. Update for next cycle
             self.timetag = tm
             self.bar_index += 1
+
             return results
+
+        # CRITICAL: Parse quote data AFTER cycle pass (for NEXT cycle)
+        if ns == self.quote.namespace and meta_id == self.quote.meta_id:
+            self.quote.market = self.market
+            self.quote.code = self.code
+            self.quote.granularity = bar.get_granularity()
+            self.quote.from_sv(bar)
 
         return []
 
@@ -1146,30 +1153,34 @@ class MultiSourceIndicator(pcts3.sv_object):
         self.signal = 0
 
     def on_bar(self, bar):
-        """Process bars from multiple sources."""
-        # Route by meta type
+        """Process bars from multiple sources.
+
+        CRITICAL: Data leakage prevention - import updates AFTER _on_cycle_pass().
+        """
+        # Timetag advancement check (OUTSIDE bar type logic)
+        if self.timetag < bar.timetag:
+            # Only pass cycle if all data ready
+            if self._preparation_is_ready():
+                # 1. Process with OLD data (prevent data leakage)
+                self._on_cycle_pass()
+
+            # Always update timetag
+            self.timetag = bar.timetag
+
+        # CRITICAL: Route and cache data AFTER cycle pass (for NEXT cycle)
         if bar.meta_id == self.quote.meta_id:
-            # Process SampleQuote data
+            # Cache SampleQuote data for NEXT cycle
             self.quote.from_sv(bar)
             close = float(self.quote.close)
             self.ema = 0.1 * close + 0.9 * self.ema
             self.quote_data_ready = True
 
         elif bar.meta_id == self.zample.meta_id:
-            # Process ZampleQuote data
+            # Cache ZampleQuote data for NEXT cycle
             self.zample.from_sv(bar)
             volume = float(self.zample.volume)
             # ... process volume ...
             self.zample_data_ready = True
-
-        # Timetag advancement check (OUTSIDE bar type logic)
-        if self.timetag < bar.timetag:
-            # Only pass cycle if all data ready
-            if self._preparation_is_ready():
-                self._on_cycle_pass()
-
-            # Always update timetag
-            self.timetag = bar.timetag
 
         return []  # Output in _on_cycle_pass()
 
@@ -1220,12 +1231,13 @@ This chapter covered:
 
 **Key Takeaways:**
 
-- Use online algorithms for O(1) memory
-- Store only necessary state in sv_object
-- Make computation deterministic (no random, no external state)
+- **🚨 CRITICAL #0**: Update imported data AFTER `_on_cycle_pass()` to prevent data leakage (cycle t must NOT use data from t+1)
 - **🚨 CRITICAL #1**: Use `bars_since_start` (NOT persisted) for rebuilding detection, NOT `bar_index`
 - **🚨 CRITICAL #2**: In `_load_from_sv()`, use `super(self.__class__, temp).from_sv(sv)`, NOT `temp.from_sv(sv)`
 - **🚨 CRITICAL #3**: Place `_on_cycle_pass()` outside bar type logic, check timetag advancement independently
+- Use online algorithms for O(1) memory
+- Store only necessary state in sv_object
+- Make computation deterministic (no random, no external state)
 - Understand difference: `from_sv()` = custom logic, `super().from_sv()` = actual state loading
 - Multi-source pattern: Check readiness before calling `_on_cycle_pass()`, reset flags after
 - Implement reconciliation methods: `_load_from_sv()`, `_equal()`, `_reconcile_state()`

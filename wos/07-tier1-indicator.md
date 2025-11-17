@@ -13,7 +13,7 @@
 
 ## Overview
 
-Tier 1 indicators are the foundation of the Wolverine architecture. They consume raw market data and produce technical analysis signals that Tier 2 strategies aggregate into portfolio decisions.
+**Tier 1 indicators**: Transform raw market data (OHLCV) → technical signals for Tier 2 portfolio strategies.
 
 ## Tier 1 Architecture
 
@@ -141,6 +141,9 @@ imports = {}
 metas = {}
 logger = pcu3.vanilla_logger()
 
+# Initialization constant
+MAX_BAR_REBUILD = 20  # max(sliding_window_lengths)
+
 class SampleQuote(pcts3.sv_object):
     """Parse SampleQuote StructValue data."""
     def __init__(self):
@@ -176,6 +179,13 @@ class CommodityIndicator(pcts3.sv_object):
         self.bar_index = 0
         self.timetag = None
 
+        # Initialization tracking (NOT persisted)
+        self.bar_since_start = 0
+        self.initialized = False
+
+        # Reconciliation support (NOT persisted)
+        self.latest_sv = None
+
         # Indicator state
         self.ema_fast = 0.0
         self.ema_slow = 0.0
@@ -191,7 +201,6 @@ class CommodityIndicator(pcts3.sv_object):
 
         # Previous values
         self.prev_close = 0.0
-        self.initialized = False
         self.persistent = True
 
         logger.info(f"Initialized indicator for {commodity_code.decode()}")
@@ -203,50 +212,86 @@ class CommodityIndicator(pcts3.sv_object):
         self.quote.load_def_from_dict(metas)
         self.quote.set_global_imports(imports)
 
+    def from_sv(self, sv: pc.StructValue):
+        """Cache incoming StructValue for reconciliation."""
+        self.latest_sv = sv
+
+    def _from_sv(self, sv: pc.StructValue):
+        """Internal deserialization helper."""
+        super().from_sv(sv)
+
+    def ready_to_serialize(self) -> bool:
+        """Determine if state should be serialized."""
+        return self.initialized
+
     def on_bar(self, bar: pc.StructValue):
-        """Process incoming bar data."""
-        # Filter for our instrument and logical contract
+        """Process incoming bar data.
+
+        CRITICAL: Data leakage prevention pattern.
+        Import data updates happen AFTER _on_cycle_pass().
+        """
+        ret = []  # ALWAYS return list
+
+        # Extract metadata
         market = bar.get_market()
         code = bar.get_stock_code()
-
-        if not (market == self.market and 
-                code.startswith(self.code[:-4]) and  # Commodity prefix
-                code.endswith(b'<00>')):  # Logical contract only
-            return []
-
-        # Parse quote data
+        tm = bar.get_time_tag()
         ns = bar.get_namespace()
         meta_id = bar.get_meta_id()
 
-        if ns == self.quote.namespace and meta_id == self.quote.meta_id:
-            self.quote.market = market
-            self.quote.code = code
-            self.quote.granularity = bar.get_granularity()
-            self.quote.from_sv(bar)
-        else:
-            return []
-
-        tm = bar.get_time_tag()
+        # Filter for our instrument
+        if not (market == self.market and
+                code.startswith(self.code[:-4]) and
+                code.endswith(b'<00>')): # Logical contract only
+            return ret
 
         # Initialize timetag
         if self.timetag is None:
             self.timetag = tm
 
-        # Handle cycle boundary
+        # CRITICAL: Handle cycle boundary
         if self.timetag < tm:
+            # 1. FIRST: Process with OLD data (prevent data leakage)
             self._on_cycle_pass()
 
-            # Output if ready
-            results = []
-            if self.bar_index > 0 and self.initialized:
-                results.append(self.copy_to_sv())
+            # 2. Reconcile with server data if needed
+            if (not self.initialized or not overwrite) and self.latest_sv is not None:
+                self._from_sv(self.latest_sv)
 
+            # 3. Serialize state if ready
+            if self.ready_to_serialize():
+                if not overwrite:
+                    self._reconcile()
+                ret.append(self.copy_to_sv())
+
+            # 4. Update for next cycle
             self.timetag = tm
+            self.bar_since_start += 1
             self.bar_index += 1
 
-            return results
+            if self.bar_since_start >= MAX_BAR_REBUILD:
+                self.initialized = True
 
-        return []
+            self.latest_sv = None
+
+        # CRITICAL: Update imported data AFTER cycle pass (for NEXT cycle)
+        if ns == self.quote.namespace and meta_id == self.quote.meta_id:
+            self.quote.market = market
+            self.quote.code = code
+            self.quote.granularity = bar.get_granularity()
+            self.quote.from_sv(bar)
+
+        # Restore from saved state during initialization
+        if self.meta_id == meta_id and self.namespace == ns and not self.initialized:
+            self.from_sv(bar)
+
+        return ret
+
+    def _reconcile(self):
+        """Reconcile calculated vs server state."""
+        # Compare self.ema_fast with latest_sv.ema_fast, adjust if needed
+        # Implementation depends on reconciliation strategy
+        pass
 
     def _on_cycle_pass(self):
         """Process end of cycle."""
@@ -417,36 +462,69 @@ class GoodManager:
 
 ## Cycle Boundary Handling
 
-Proper pattern for cycle boundaries:
+**CRITICAL**: Data leakage prevention pattern. Import data updates happen AFTER `_on_cycle_pass()`.
 
 ```python
 def on_bar(self, bar):
-    """Correct cycle boundary handling."""
+    """Correct cycle boundary handling with data leakage prevention."""
+    ret = []
+
+    # Extract metadata
     tm = bar.get_time_tag()
+    ns = bar.get_namespace()
+    meta_id = bar.get_meta_id()
 
     # Initialize timetag
     if self.timetag is None:
         self.timetag = tm
 
-    # Cycle boundary detected
+    # CRITICAL: Cycle boundary detected
     if self.timetag < tm:
-        # 1. Process end of previous cycle
+        # 1. FIRST: Process with OLD data (prevent data leakage)
         self._on_cycle_pass()
 
-        # 2. Generate output if ready
-        results = []
-        if self.ready_to_serialize():
-            results.append(self.copy_to_sv())
+        # 2. Reconcile with server data if needed
+        if (not self.initialized or not overwrite) and self.latest_sv is not None:
+            self._from_sv(self.latest_sv)
 
-        # 3. Update for new cycle
+        # 3. Generate output if ready
+        if self.ready_to_serialize():
+            if not overwrite:
+                self._reconcile()
+            ret.append(self.copy_to_sv())
+
+        # 4. Update for new cycle
         self.timetag = tm
+        self.bar_since_start += 1
         self.bar_index += 1
 
-        return results
+        if self.bar_since_start >= MAX_BAR_REBUILD:
+            self.initialized = True
 
-    # Still in current cycle - accumulate data
-    return []
+        self.latest_sv = None
+
+    # CRITICAL: Update imported data AFTER cycle pass (for NEXT cycle)
+    if ns == self.quote.namespace and meta_id == self.quote.meta_id:
+        self.quote.from_sv(bar)
+
+    # Restore from saved state during initialization
+    if self.meta_id == meta_id and self.namespace == ns and not self.initialized:
+        self.from_sv(bar)
+
+    return ret
 ```
+
+**Why This Matters:**
+
+| Step | Purpose | Data Used |
+|------|---------|-----------|
+| 1. `_on_cycle_pass()` | Process cycle t | Data from cycle t |
+| 2. Reconcile | Compare calc vs server | Server data from t |
+| 3. Serialize | Output cycle t result | Calculated data from t |
+| 4. Update counters | Advance to cycle t+1 | N/A |
+| 5. Update imports | Store data for t+1 | **Data from bar (t+1)** |
+
+If you update imports BEFORE step 1, cycle t uses data from t+1 → **data leakage bug**.
 
 ## Output Serialization
 
@@ -549,20 +627,26 @@ class MultiPeriodEMA(pcts3.sv_object):
             alpha = 2.0 / (period + 1)
             self.ema_values[i] = alpha * price + (1 - alpha) * self.ema_values[i]
 
-    def copy_to_sv(self) -> pc.StructValue:
-        """Convert vector to scalars for output"""
-        # CRITICAL: Vector → Scalars
+    def to_sv(self) -> pc.StructValue:
+        """Convert vector to scalars for serialization.
+
+        CRITICAL: from_sv() must be the exact inverse of this method.
+        """
+        # Vector → Scalars
         self.ema_10 = self.ema_values[0]
         self.ema_20 = self.ema_values[1]
         self.ema_50 = self.ema_values[2]
         self.ema_100 = self.ema_values[3]
         self.ema_200 = self.ema_values[4]
-        return super().copy_to_sv()
+        return super().to_sv()
 
     def from_sv(self, sv: pc.StructValue):
-        """Reconstruct vector from scalars when resuming"""
+        """Reconstruct vector from scalars when resuming.
+
+        CRITICAL: Must be exact inverse of to_sv().
+        """
         super().from_sv(sv)
-        # CRITICAL: Scalars → Vector (MUST be inverse of copy_to_sv)
+        # Scalars → Vector
         self.ema_values[0] = self.ema_10
         self.ema_values[1] = self.ema_20
         self.ema_values[2] = self.ema_50
@@ -587,19 +671,23 @@ class MultiPeriodEMA(pcts3.sv_object):
 
 **Why This Matters:**
 
-- **Replay Consistency**: When resuming from midpoint, `from_sv()` must correctly reconstruct your internal vector
-- **State Persistence**: Every cycle, `copy_to_sv()` must save current vector values to scalar fields
-- **Inverse Requirement**: `from_sv()` must exactly reverse what `copy_to_sv()` does
+| Requirement | Purpose |
+|-------------|---------|
+| `from_sv() ↔ to_sv()` inverse | Replay consistency when resuming from midpoint |
+| Complete mapping | All vector elements must round-trip correctly |
+| No data loss | Every field in vector must have corresponding scalar |
+
+**Note:** Since `copy_to_sv()` calls `to_sv()` internally, ensuring the `from_sv() ↔ to_sv()` inverse relationship guarantees correct behavior with `copy_to_sv()`.
 
 **Common Mistake:**
 
 ```python
 # ❌ WRONG - Asymmetric conversion
-def copy_to_sv(self):
+def to_sv(self):
     self.ema_10 = self.ema_values[0]
     self.ema_20 = self.ema_values[1]
     # Missing: ema_50, ema_100, ema_200!
-    return super().copy_to_sv()
+    return super().to_sv()
 
 def from_sv(self, sv):
     super().from_sv(sv)
@@ -614,35 +702,49 @@ def from_sv(self, sv):
 ```python
 # Test round-trip serialization
 obj1.ema_values = [100.0, 101.0, 102.0, 103.0, 104.0]
-sv = obj1.copy_to_sv()
+sv = obj1.to_sv()
 obj2.from_sv(sv)
 assert obj1.ema_values == obj2.ema_values  # MUST pass!
 ```
 
-> **See Chapter 04 for detailed explanation of vector-to-scalar serialization pattern.**
+> **See Chapter 04 for detailed explanation of `from_sv() ↔ to_sv()` inverse relationship.**
 
 ## Summary
 
 This chapter covered:
 
 1. **Project Setup**: Files and configurations
-2. **Simple Indicator**: EMA crossover example
-3. **Multi-Commodity**: Manager pattern
-4. **Cycle Boundaries**: Proper handling
-5. **Output Serialization**: Always return list
-6. **Vector-to-Scalar Serialization**: Multi-parameter indicators
-7. **Best Practices**: All critical doctrines
+2. **Complete Indicator**: EMA crossover with all critical patterns
+3. **Multi-Commodity**: Manager pattern (DOCTRINE 1)
+4. **Data Leakage Prevention**: Import updates AFTER `_on_cycle_pass()`
+5. **Initialization Tracking**: `bar_since_start` and `MAX_BAR_REBUILD`
+6. **Reconciliation**: `latest_sv` caching and `_reconcile()`
+7. **Cycle Boundaries**: 5-step pattern with proper timing
+8. **Output Serialization**: Always return list
+9. **Vector-to-Scalar**: Multi-parameter indicators with `to_sv()/from_sv()`
+10. **Best Practices**: All critical doctrines
+
+**Critical Patterns (from organic/fix001.md):**
+
+| Pattern | Purpose | Location |
+|---------|---------|----------|
+| Data leakage prevention | Prevent using t+1 data for cycle t | `on_bar()` line 277-282 |
+| Initialization tracking | Know when enough data accumulated | `bar_since_start >= MAX_BAR_REBUILD` |
+| Reconciliation | Compare calc vs server state | `_reconcile()` in overwrite=False mode |
+| `from_sv() ↔ to_sv()` | Exact inverse for state persistence | Vector-to-scalar section |
 
 **Key Takeaways:**
 
+- **CRITICAL**: Update imported data AFTER `_on_cycle_pass()` (data leakage prevention)
+- **CRITICAL**: Track initialization with `bar_since_start` (NOT persisted)
+- **CRITICAL**: Cache with `latest_sv`, reconcile with `_reconcile()`
+- **CRITICAL**: `from_sv()` must be exact inverse of `to_sv()`
 - One indicator object per commodity (DOCTRINE 1)
 - Only process logical contracts (DOCTRINE 4)
 - Trust dependency data (DOCTRINE 2)
 - Always return list (DOCTRINE 3)
-- Use online algorithms
-- Bounded memory with deque
-- **CRITICAL**: Override copy_to_sv()/from_sv() for vector-to-scalar conversion
-- **CRITICAL**: from_sv() must be exact inverse of copy_to_sv()
+- Use online algorithms (bounded memory)
+- Use `deque(maxlen=N)` for fixed-size collections
 
 **Next Steps:**
 
