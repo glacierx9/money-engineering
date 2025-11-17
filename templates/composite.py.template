@@ -23,6 +23,9 @@ imports = {}
 metas = {}
 logger = pcu3.vanilla_logger()
 
+# Initialization constant: max cycles needed for warm-up
+MAX_BAR_REBUILD = 100  # TODO: Adjust based on your strategy's requirements
+
 
 class {{NAME}}(sc3.strategy):
     """
@@ -37,6 +40,13 @@ class {{NAME}}(sc3.strategy):
 
         # Configuration
         self.basket_count = basket_count
+
+        # Cycle tracking (from sc3.strategy base class)
+        # self.timetag - current cycle timestamp (inherited)
+
+        # In-memory only (NOT persisted - for initialization tracking)
+        self.bar_since_start = 0  # Cycles since this process started
+        self.initialized = False  # Warm-up complete flag
 
         # Basket management
         self.strategies: List[sc3.strategy] = []
@@ -53,6 +63,9 @@ class {{NAME}}(sc3.strategy):
         self.leverages: List[float] = []
         self.capitals: List[float] = []
         self.pvs: List[float] = []
+
+        # Imported signal storage (updated AFTER _on_cycle_pass)
+        self.pending_signals: Dict = {}  # Cache for incoming signals
 
         # Initialize empty baskets
         self.initialize_empty_baskets()
@@ -86,16 +99,83 @@ class {{NAME}}(sc3.strategy):
                 continue
             self.imported_strategies[strategies[k][0]] = strategies[k][1]
 
-    async def on_bar(self, _bar: pc.StructValue) -> pc.StructValue:
-        """Main signal processing"""
-        # TODO: Implement basket management logic
-        # - Process Tier 1 strategy signals
-        # - Allocate/deallocate baskets
-        # - Update portfolio state
+    async def on_bar(self, bar: pc.StructValue) -> pc.StructValue:
+        """
+        Main signal processing
 
+        CRITICAL TIMING RULES:
+        1. Process Tier-1 signals and store them (don't act immediately)
+        2. On cycle boundary, process PREVIOUS cycle's signals in _on_cycle_pass()
+        3. Update signal storage AFTER _on_cycle_pass() to prevent data leakage
+        """
+        # Extract metadata
+        tm = bar.get_time_tag()  # Milliseconds since epoch
+        ns = bar.get_namespace()
+        meta_id = bar.get_meta_id()
+
+        # Initialize timetag on first bar
+        if self.timetag is None:
+            self.timetag = tm
+
+        # Handle cycle boundaries
+        if self.timetag < tm:
+            # New cycle - process PREVIOUS cycle's signals
+            self._on_cycle_pass(tm)
+
+            # Update for next cycle
+            self.timetag = tm
+            self.bar_since_start += 1
+
+            # Check if initialization complete
+            if self.bar_since_start >= MAX_BAR_REBUILD:
+                self.initialized = True
+
+        # CRITICAL: Store incoming signals AFTER _on_cycle_pass()
+        # This prevents using t+1 signals for cycle t decisions (data leakage)
+        if (ns, meta_id) in self.imported_strategies:
+            # This is a Tier-1 indicator signal - cache it for NEXT cycle
+            signal_key = (bar.get_market(), bar.get_stock_code(), meta_id)
+            self.pending_signals[signal_key] = bar
+            # TODO: Parse signal fields as needed
+
+        # Synchronize and return state
         self._save()
         self._sync()
         return self.copy_to_sv()
+
+    def _on_cycle_pass(self, time_tag):
+        """
+        Process cycle - implement basket allocation logic here
+
+        This method processes cycle t using signals collected during cycle t-1.
+        All signal updates happen AFTER this method completes.
+
+        Args:
+            time_tag: Current cycle timestamp (milliseconds since epoch)
+        """
+        # TODO: Implement basket management logic using self.pending_signals
+
+        # Example pattern:
+        # 1. Process signals from previous cycle
+        # for signal_key, signal_bar in self.pending_signals.items():
+        #     market, code, meta_id = signal_key
+        #     # Parse signal fields
+        #     # Determine if allocation needed
+
+        # 2. Allocate new baskets for strong signals
+        # if should_allocate:
+        #     self._allocate(meta_id, market, code, money, leverage)
+
+        # 3. Deallocate baskets for weak/stopped signals
+        # if should_deallocate:
+        #     basket.deallocate()
+
+        # 4. Update basket positions
+        # for basket in self.strategies:
+        #     if basket.allocated:
+        #         basket.update_position()
+
+        pass  # Replace with actual logic
 
     def _save(self):
         """Synchronize arrays with basket states"""
@@ -153,7 +233,20 @@ async def on_market_close(market, tradeday, timetag, timestring):
 
 
 async def on_reference(market, tradeday, data, timetag, timestring):
-    pass
+    """
+    CRITICAL: Forward reference data to composite strategy
+
+    This populates basket.target_instrument for contract rolling.
+    Without this, baskets will have empty target_instrument, causing:
+    - basket.price = 0
+    - basket.pv frozen
+    - Trading failures
+
+    See: wos/08-tier2-composite.md Section on on_reference() callback
+    """
+    global composite, worker_no
+    if worker_no == 1:
+        composite.on_reference(bytes(market, 'utf-8'), tradeday, data)
 
 
 async def on_tradeday_begin(market, tradeday, time_tag, time_string):

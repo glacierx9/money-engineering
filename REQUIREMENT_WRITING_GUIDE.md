@@ -644,7 +644,7 @@ Reference: config/parser.py for JSON and YAML parser implementations
 
 ### 9.3 Revision Summary Tracking ⚠️ MANDATORY
 
-**FUNDAMENTAL RULE**: Every requirement document set MUST maintain a `REVISION_SUMMARY.md` file.
+**FUNDAMENTAL RULE**: Every requirement document set MUST maintain a `UPDATE_LOG.md` file.
 
 **Purpose**:
 - Complete audit trail of all changes
@@ -732,14 +732,14 @@ Reference: config/parser.py for JSON and YAML parser implementations
 **Best Practice** ✅:
 ```markdown
 ✅ Always do this:
-- Update REVISION_SUMMARY.md for EVERY change
+- Update UPDATE_LOG.md for EVERY change
 - Include root cause analysis
 - List all affected files
 - Assess impact of correction
 - Keep chronological order
 ```
 
-**Enforcement**: Requirements without maintained REVISION_SUMMARY.md are incomplete and do not meet documentation standards.
+**Enforcement**: Requirements without maintained UPDATE_LOG.md are incomplete and do not meet documentation standards.
 
 ---
 
@@ -771,7 +771,7 @@ Before finalizing requirements, verify:
 - [ ] Won't become outdated when code changes
 - [ ] Single source of truth (requirements for contract, source for implementation)
 - [ ] Version number and date included
-- [ ] **REVISION_SUMMARY.md updated** (if modifying existing requirements)
+- [ ] **UPDATE_LOG.md updated** (if modifying existing requirements)
 
 **Self-Test**:
 - [ ] Can I remove any word without losing precision? → **Remove it**
@@ -861,7 +861,7 @@ def find_checkpoint(checkpoint_dir: Path, desired_step: Optional[int] = None) ->
 4. **Principles for errors** - Not specific messages
 5. **Full specs for CLIs** - Complete argument tables
 6. **Contracts remain stable** - Implementations evolve
-7. **REVISION_SUMMARY.md mandatory** - Update for EVERY change
+7. **UPDATE_LOG.md mandatory** - Update for EVERY change
 
 **Quality Metrics**:
 - ✅ **Information Density**: High (3+ precision points per 25-30 words)

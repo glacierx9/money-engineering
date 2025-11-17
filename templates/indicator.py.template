@@ -22,6 +22,10 @@ imports = {}
 metas = {}
 logger = pcu3.vanilla_logger()
 
+# Initialization constant: max cycles needed for warm-up
+# Set this to max(all_sliding_window_lengths) used in your indicator
+MAX_BAR_REBUILD = 100  # TODO: Adjust based on your indicator's requirements
+
 
 class SampleQuote(pcts3.sv_object):
     """Market data (OHLCV) from global namespace"""
@@ -62,9 +66,16 @@ class {{NAME}}(pcts3.sv_object):
         self.code = b'{{FIRST_SEC}}<00>'
         self.revision = (1 << 32) - 1
 
-        # State variables (automatically persisted)
-        self.bar_index = 0
-        self.timetag = None
+        # State variables (automatically persisted in StructValue)
+        self.bar_index = 0  # Global cycle counter (persisted)
+        self.timetag = None  # Current cycle timestamp (from pycaitlynts3.sv_object)
+
+        # In-memory only (NOT persisted - for initialization tracking)
+        self.bar_since_start = 0  # Cycles since this process started
+        self.initialized = False  # Warm-up complete flag
+
+        # Reconciliation support (overwrite=False mode)
+        self.latest_sv = None  # Cache for incoming StructValue
 
         # TODO: Add your indicator fields here
         self.indicator_value = 0.0
@@ -82,9 +93,46 @@ class {{NAME}}(pcts3.sv_object):
         self.sq.load_def_from_dict(metas)
         self.sq.set_global_imports(imports)
 
+    def from_sv(self, sv: pc.StructValue):
+        """
+        Cache incoming StructValue for reconciliation
+
+        This is called by framework when resuming. We cache the sv
+        for later reconciliation after _on_cycle_pass() completes.
+        """
+        self.latest_sv = sv
+
+    def _from_sv(self, sv: pc.StructValue):
+        """
+        Internal deserialization helper
+
+        Loads state from StructValue without triggering custom from_sv() logic.
+        Used during initialization to restore from server data.
+        """
+        super().from_sv(sv)
+
+    def _reconcile(self):
+        """
+        Reconcile calculated state with server state (overwrite=False mode)
+
+        TODO: Implement field-by-field reconciliation if needed.
+        Example:
+            if self.latest_sv:
+                saved = self._load_from_sv(self.latest_sv)
+                # Compare critical fields with tolerances
+                if not self._fields_match(saved):
+                    logger.warning("Reconciliation mismatch detected")
+        """
+        pass  # Implement if using overwrite=False
+
     def on_bar(self, bar: pc.StructValue) -> List[pc.StructValue]:
         """
         Process incoming market data bars
+
+        CRITICAL TIMING RULES:
+        1. Update imported data AFTER _on_cycle_pass() to prevent data leakage
+        2. Cache restoration (from_sv) only during initialization
+        3. Reconciliation happens before serialization in overwrite=False mode
 
         Returns:
             List of StructValue outputs (empty list if no output this cycle)
@@ -94,11 +142,43 @@ class {{NAME}}(pcts3.sv_object):
         # Extract metadata
         market = bar.get_market()
         code = bar.get_stock_code()
-        tm = bar.get_time_tag()
+        tm = bar.get_time_tag()  # Milliseconds since epoch
         ns = bar.get_namespace()
         meta_id = bar.get_meta_id()
 
-        # Route to appropriate sv_object
+        # Initialize timetag on first bar
+        if self.timetag is None:
+            self.timetag = tm
+
+        # Handle cycle boundaries
+        if self.timetag < tm:
+            # New cycle - process PREVIOUS cycle's data
+            self._on_cycle_pass(tm)
+
+            # Reconcile with server data if in overwrite=False mode
+            if (not self.initialized or not overwrite) and self.latest_sv is not None:
+                self._from_sv(self.latest_sv)
+
+            # Serialize state if ready
+            if self.ready_to_serialize():
+                if not overwrite:
+                    self._reconcile()  # Final reconciliation check
+                ret.append(self.copy_to_sv())
+
+            # Update for next cycle
+            self.timetag = tm
+            self.bar_since_start += 1  # In-memory counter (NOT persisted)
+            self.bar_index += 1  # Global counter (persisted)
+
+            # Check if initialization complete
+            if self.bar_since_start >= MAX_BAR_REBUILD:
+                self.initialized = True
+
+            # Clear reconciliation cache
+            self.latest_sv = None
+
+        # CRITICAL: Update imported data AFTER _on_cycle_pass()
+        # This prevents data leakage (using t+1 data for cycle t calculations)
         if self.sq.namespace == ns and self.sq.meta_id == meta_id:
             # Filter for logical contracts only
             if code.endswith(b'<00>'):
@@ -107,24 +187,12 @@ class {{NAME}}(pcts3.sv_object):
                 self.sq.code = code
                 self.sq.granularity = bar.get_granularity()
 
-                # Parse data into sv_object
+                # Parse data into sv_object (this data is for NEXT cycle)
                 self.sq.from_sv(bar)
 
-                # Handle cycle boundaries
-                if self.timetag is None:
-                    self.timetag = tm
-
-                if self.timetag < tm:
-                    # New cycle - process previous cycle's data
-                    self._on_cycle_pass(tm)
-
-                    # Serialize state if ready
-                    if self.ready_to_serialize():
-                        ret.append(self.copy_to_sv())
-
-                    # Update for next cycle
-                    self.timetag = tm
-                    self.bar_index += 1
+        # Restore from server data during initialization only
+        if self.meta_id == meta_id and self.namespace == ns and not self.initialized:
+            self.from_sv(bar)
 
         return ret  # ALWAYS return list
 
@@ -132,10 +200,13 @@ class {{NAME}}(pcts3.sv_object):
         """
         Process cycle - implement your indicator logic here
 
+        This method processes cycle t using data collected during cycle t-1.
+        All imported data updates happen AFTER this method completes.
+
         Args:
-            time_tag: Current cycle timestamp
+            time_tag: Current cycle timestamp (milliseconds since epoch)
         """
-        # Access parsed market data
+        # Access parsed market data from PREVIOUS cycle
         current_price = float(self.sq.close)
         current_volume = float(self.sq.volume)
         high = float(self.sq.high)
@@ -154,8 +225,12 @@ class {{NAME}}(pcts3.sv_object):
             self.signal = 0  # Neutral
 
     def ready_to_serialize(self) -> bool:
-        """Determine if state should be serialized"""
-        return self.bar_index > 0  # Serialize after first bar
+        """
+        Determine if state should be serialized
+
+        Typically wait until initialization is complete before serializing.
+        """
+        return self.initialized  # Only serialize after warm-up
 
 
 # Global instance
