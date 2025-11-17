@@ -12,9 +12,11 @@
 
 ## Overview
 
-StructValue is the fundamental data container in the Wolverine framework. Every piece of market data, indicator output, and strategy signal flows through the system as a StructValue. The `sv_object` class provides automatic serialization, allowing your strategy's state to be saved and restored transparently.
+**StructValue**: Universal data container for all framework data (market data, indicators, signals)
 
-This chapter explains how these concepts work together to enable stateless,resumable strategies.
+**sv_object**: Base class providing automatic state serialization/deserialization
+
+**Enables**: Stateless, resumable strategies with transparent state persistence
 
 ## StructValue: The Universal Data Container
 
@@ -770,6 +772,11 @@ def on_bar(self, bar):
 
 **Critical Concept:** When using lists/vectors internally but storing as separate scalar fields in uout.json.
 
+**Flexibility Note:** You can choose either approach:
+- **Vector internally, scalars in uout.json**: Convenient for calculations, explicit in output (requires custom to_sv/from_sv)
+- **Scalars for both**: Simple, no custom serialization needed
+- **Vector for both**: Store as array field in uout.json (if framework supports)
+
 **The Challenge:**
 
 You might calculate similar values with different parameters using a vector:
@@ -794,7 +801,9 @@ But uout.json defines them as separate fields:
 
 **The Solution: Custom Serialization**
 
-You **MUST** override `copy_to_sv()` and `from_sv()` to handle the conversion:
+You **MUST** override `to_sv()` and `from_sv()` to handle the conversion.
+
+**Note:** `copy_to_sv()` is a convenience wrapper that calls `to_sv()`. When we say "override to_sv()", the pattern applies to copy_to_sv() as well since it internally uses to_sv().
 
 ```python
 class MultiPeriodIndicator(pcts3.sv_object):
@@ -823,11 +832,11 @@ class MultiPeriodIndicator(pcts3.sv_object):
             alpha = 2.0 / (period + 1)
             self.ema_values[i] = alpha * price + (1 - alpha) * self.ema_values[i]
 
-    def copy_to_sv(self) -> pc.StructValue:
+    def to_sv(self) -> pc.StructValue:
         """
         Convert vector to scalar fields for serialization
 
-        CRITICAL: This is called when saving state
+        CRITICAL: from_sv() must be the inverse of this method
         """
         # Vector → Scalars (for output)
         self.ema_1 = self.ema_values[0]
@@ -837,13 +846,13 @@ class MultiPeriodIndicator(pcts3.sv_object):
         self.ema_5 = self.ema_values[4]
 
         # Call parent to serialize scalar fields
-        return super().copy_to_sv()
+        return super().to_sv()
 
     def from_sv(self, sv: pc.StructValue):
         """
         Reconstruct vector from scalar fields when resuming
 
-        CRITICAL: Must be inverse of copy_to_sv()
+        CRITICAL: Must be the inverse of to_sv()
         """
         # Call parent to deserialize scalar fields
         super().from_sv(sv)
@@ -864,17 +873,21 @@ class MultiPeriodIndicator(pcts3.sv_object):
    - Otherwise calculations will be wrong
 
 2. **State Persistence**: Every cycle:
-   - Framework calls `copy_to_sv()` to save state
+   - Framework calls `to_sv()` (via copy_to_sv()) to save state
    - Your scalars must match current vector values
    - Otherwise state is lost
 
 3. **Inverse Requirement**:
    ```python
+   # from_sv() must be the inverse of to_sv()
    # This MUST be true:
-   obj1.copy_to_sv()  # Vector → Scalars
-   sv = obj1.copy_to_sv()
-   obj2.from_sv(sv)   # Scalars → Vector
+   sv = obj1.to_sv()    # Vector → Scalars → StructValue
+   obj2.from_sv(sv)     # StructValue → Scalars → Vector
    # obj2.ema_values == obj1.ema_values  # MUST be equal!
+
+   # Note: copy_to_sv() calls to_sv() internally, so this also works:
+   sv = obj1.copy_to_sv()
+   obj2.from_sv(sv)
    ```
 
 **Complete Example:**
@@ -971,9 +984,127 @@ def from_sv(self, sv):
 
 **Key Principle:**
 
-> **from_sv() must be the exact inverse of copy_to_sv()**
+> **from_sv() must be the exact inverse of to_sv()**
 >
-> Any transformation applied in copy_to_sv() must be reversed in from_sv()
+> Any transformation applied in to_sv() must be reversed in from_sv()
+>
+> **Note:** Since copy_to_sv() calls to_sv() internally, ensuring from_sv() ↔ to_sv() inverse relationship guarantees correct behavior with copy_to_sv() as well.
+
+### 🔄 Advanced Pattern: Reconciliation with latest_sv
+
+**Use Case:** When running in `overwrite=False` mode, you need to reconcile calculated state with server-saved state.
+
+**The Challenge:**
+
+The framework may send you saved state from the server while you're also calculating fresh state. You need to:
+1. Cache incoming saved state
+2. Complete your calculations for the current cycle
+3. Reconcile (compare or merge) calculated vs saved state
+4. Serialize the reconciled result
+
+**The Solution: Caching Pattern**
+
+Override `from_sv()` to cache incoming StructValues, then reconcile after calculations:
+
+```python
+class MyIndicator(pcts3.sv_object):
+    """Indicator with reconciliation support"""
+
+    def __init__(self):
+        super().__init__()
+        # ... regular fields ...
+
+        # Reconciliation cache
+        self.latest_sv = None  # Cache for incoming StructValue
+
+    def from_sv(self, sv: pc.StructValue):
+        """
+        Cache incoming StructValue for later reconciliation
+
+        This is called by the framework when it sends saved state.
+        We DON'T deserialize immediately - we cache for later.
+        """
+        self.latest_sv = sv  # Store for reconciliation after _on_cycle_pass
+
+    def _from_sv(self, sv: pc.StructValue):
+        """
+        Internal deserialization helper
+
+        Calls parent's from_sv() to actually load state.
+        Used during initialization to restore from server data.
+        """
+        super().from_sv(sv)  # Actually deserialize fields
+
+    def on_bar(self, bar: pc.StructValue) -> List[pc.StructValue]:
+        ret = []
+        tm = bar.get_time_tag()
+
+        if self.timetag < tm:
+            # 1. Process cycle with calculated data
+            self._on_cycle_pass(tm)
+
+            # 2. Reconcile with server data if available
+            if (not self.initialized or not overwrite) and self.latest_sv is not None:
+                self._from_sv(self.latest_sv)  # Load saved state
+
+            # 3. Serialize output
+            if self.ready_to_serialize():
+                if not overwrite:
+                    self._reconcile()  # Compare/merge states
+                ret.append(self.copy_to_sv())
+
+            # 4. Update for next cycle
+            self.timetag = tm
+            self.latest_sv = None  # Clear cache
+
+        return ret
+
+    def _reconcile(self):
+        """
+        Reconcile calculated state with server state
+
+        Compare critical fields with tolerances.
+        Log discrepancies for investigation.
+        """
+        if self.latest_sv:
+            # Create temporary object to load saved state
+            saved = self.__class__()
+            saved.load_def_from_dict(self.metas)
+            super(self.__class__, saved).from_sv(self.latest_sv)  # Bypass caching
+
+            # Compare with tolerances
+            if abs(self.ema_value - saved.ema_value) > 1e-6:
+                logger.warning(f"EMA mismatch: calc={self.ema_value}, saved={saved.ema_value}")
+```
+
+**Why This Pattern:**
+
+1. **Non-Blocking**: Caching doesn't interrupt your calculation flow
+2. **Timing Control**: Reconciliation happens AFTER calculations complete
+3. **Separation**: `from_sv()` caches, `_from_sv()` deserializes, `_reconcile()` compares
+4. **Overwrite Mode**: When `overwrite=True`, reconciliation skipped entirely
+
+**Critical Methods:**
+
+| Method | Purpose | When Called |
+|--------|---------|-------------|
+| `from_sv(sv)` | Cache incoming StructValue | Framework sends saved state |
+| `_from_sv(sv)` | Load state (bypass caching) | During initialization |
+| `_reconcile()` | Compare calc vs saved | Before serialization (overwrite=False) |
+| `copy_to_sv()` | Serialize final state | Ready to output |
+
+**Inverse Relationship Still Applies:**
+
+```python
+# The fundamental requirement remains: from_sv() ↔ to_sv()
+sv1 = obj1.to_sv()          # Serialize
+obj2._from_sv(sv1)          # Deserialize (internal method bypasses caching)
+# obj2 state == obj1 state   # Must be equal!
+
+# Also works with copy_to_sv() since it calls to_sv() internally:
+sv1 = obj1.copy_to_sv()
+obj2._from_sv(sv1)
+```
 
 ## Summary
 
@@ -986,7 +1117,8 @@ This chapter covered:
 5. **copy_to_sv()**: Saving state to StructValue
 6. **Multiple sv_objects**: Parser pattern for different data types
 7. **Vector-to-Scalar Serialization**: Custom copy_to_sv()/from_sv() for internal vectors
-8. **Best Practices**: Trust data, set metadata, separate parsers
+8. **Reconciliation Pattern**: Caching with latest_sv for overwrite=False mode
+9. **Best Practices**: Trust data, set metadata, separate parsers
 
 **Key Takeaways:**
 
@@ -996,8 +1128,10 @@ This chapter covered:
 - Trust dependency data - no fallback logic
 - Use separate sv_objects for different data types
 - Initialize all sv_objects with load_def_from_dict()
-- **CRITICAL**: Override copy_to_sv() and from_sv() when using vectors internally
-- **CRITICAL**: from_sv() must be the exact inverse of copy_to_sv()
+- **CRITICAL**: Override to_sv() and from_sv() when using vectors internally
+- **CRITICAL**: from_sv() must be the exact inverse of to_sv()
+- **CRITICAL**: copy_to_sv() calls to_sv() internally - ensuring inverse relationship handles both
+- **CRITICAL**: For reconciliation, override from_sv() to cache, use _from_sv() to deserialize
 
 **Next Steps:**
 
