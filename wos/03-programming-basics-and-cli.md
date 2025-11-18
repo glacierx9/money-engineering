@@ -320,6 +320,85 @@ current_time_str = dt.strftime("%Y%m%d%H%M%S")
 
 **Reference**: See `pycaitlynutils3.py` for complete time API documentation.
 
+## Multi-Worker Architecture
+
+### worker_no Pattern
+
+**Framework design**: Multiple parallel processes for backtesting performance
+
+| worker_no | Role | Responsibilities |
+|-----------|------|------------------|
+| **0** | Coordinator (reduce) | No calculation; optional `on_reduce()` to aggregate results from workers 1-N |
+| **1...N** | Workers (map) | Actual bar processing and calculations |
+
+**Framework behavior**:
+- Sets `worker_no` at runtime for each process
+- Routes bars to workers by key (market, commodity, granularity)
+- Worker 0 aggregates outputs or forwards to server
+
+**Critical patterns**:
+
+```python
+# Initialization: Only workers load metadata
+async def on_init():
+    global worker_no, strategy, imports, metas
+    if worker_no != 0 and metas and imports:  # Workers only
+        strategy.load_def_from_dict(metas)
+        strategy.set_global_imports(imports)
+
+# Processing: Only worker 1 processes bars (single-worker mode)
+async def on_bar(bar: pc.StructValue):
+    global worker_no, strategy
+    if worker_no != 1:  # Skip in coordinator
+        return []
+    return strategy.on_bar(bar)
+
+# Optional: Coordinator aggregates results
+async def on_reduce(results: List[pc.StructValue]):
+    """Called on worker 0 to aggregate outputs from workers 1-N"""
+    global strategy
+    # Aggregate logic here
+    return aggregated_results
+```
+
+**Reference**: See `/home/wolverine/bin/running/` for framework implementation:
+- `calculator3.py`: Main entry point
+- `calculatorp3.py`: Live environment launcher (spawns workers via SSH)
+- `calculator3_test.py`: Dev/test backtest runner
+
+## Logic Contracts
+
+**Purpose**: Abstract expiring contracts (futures/options) into stable identifiers
+
+**Pattern**: Contract codes ending with `<NN>` where NN is 00-99
+
+| Logic Contract | Meaning | Selection Criteria |
+|----------------|---------|-------------------|
+| `<00>` | Leading contract | Highest volume or open interest |
+| `<01>` | Nearest to expire | 1st contract by expiration date |
+| `<N>` | N-th nearest | N-th contract by expiration date |
+
+**Contract mapping**:
+- Maintained daily by framework (not indicator)
+- Updated in Singularity/Reference data
+- Pushed via `on_reference()` callback ~10 min before trading day
+
+**Example**:
+```python
+# Code patterns
+b'cu<00>'  # Copper leading contract (logical)
+b'cu2501'  # Copper Jan 2025 contract (real)
+
+# Filtering in on_bar
+code = bar.get_stock_code()
+if code.endswith(b'<00>'):  # Logical contract only
+    process_logical(bar)
+elif re.match(rb'cu\d{4}', code):  # Real contract
+    process_real(bar)
+```
+
+**Reference**: Spot markets (stocks) don't use logic contracts (no expiry).
+
 ## Required Callbacks
 
 ### Initialization Flow
@@ -421,8 +500,12 @@ async def on_market_close(market, tradeday, timetag, timestring):
 
 async def on_tradeday_begin(market, tradeday, time_tag, time_string):
     """
-    Called at beginning of trading day.
-    Use for daily initialization/reset.
+    Called ~10 min before trading day starts.
+
+    CRITICAL for strategies:
+    - target_instrument selection (which contract to trade)
+    - Contract rolling (switch from old to new contract)
+    - Daily initialization
     """
     global strategy
     strategy.on_tradeday_begin(market, tradeday)
@@ -430,35 +513,76 @@ async def on_tradeday_begin(market, tradeday, time_tag, time_string):
 async def on_tradeday_end(market, tradeday, timetag, timestring):
     """
     Called at end of trading day.
-    Use for daily cleanup/reporting.
+
+    Use for:
+    - End-of-day calculations
+    - Daily reporting
+    - State cleanup
     """
     global strategy
     strategy.on_tradeday_end(market, tradeday)
     logger.info(f"End of day: PV={strategy.pv:.2f}, NV={strategy.nv:.4f}")
 ```
 
-**5. Reference Data**
+**5. on_reference() - Singularity/Reference Data**
+
+**CRITICAL**: Required for ALL strategies (Tier 2/3). Composite strategies MUST forward to sub-strategies.
+
+**Purpose**: Receive contract mappings, tick sizes, and market metadata
+
+**Timing**: Pushed ~10 min before trading day begins
+
+**Contains**:
+- Logic contract → Real contract mappings (<00> → cu2501, etc.)
+- Available contracts, stocks, indices, options
+- Tick sizes (`min_variation_unit`)
+- Contract multipliers
+- Trading hours per market
 
 ```python
 async def on_reference(market, tradeday, data, timetag, timestring):
     """
-    Process reference data (tick sizes, multipliers, etc.).
-    Called when new reference data becomes available.
+    CRITICAL: Process Singularity/Reference data.
+
+    Args:
+        market: Market identifier (b'SHFE', b'DCE', etc.)
+        tradeday: Trading day (YYYYMMDD format)
+        data: Dict containing contract mappings and metadata
+        timetag: Timestamp (ms since epoch)
+        timestring: Human-readable time
     """
     global strategy
 
+    # Extract commodity reference data
     if 'commodity' in data:
         commodities = data['commodity']
+
+        # Tick sizes for precise pricing
         tick_sizes = commodities.get('min_variation_unit', [])
         codes = commodities.get('code', [])
 
-        # Store tick sizes for precise pricing
+        # Contract mappings for logic contracts
+        logic_mappings = commodities.get('logic_contract_map', {})
+
+        # Store for strategy use
         for i, code in enumerate(codes):
             if i < len(tick_sizes):
                 strategy.tick_sizes[f"{market}/{code}"] = tick_sizes[i]
 
-        logger.info(f"Updated reference data for {len(codes)} commodities")
+        # Update logic contract mappings
+        strategy.update_contract_mappings(logic_mappings)
+
+        logger.info(f"Reference data updated: {len(codes)} commodities")
+
+# For composite strategies: MUST forward to sub-strategies
+async def on_reference(market, tradeday, data, timetag, timestring):
+    """Forward reference data to all sub-strategies"""
+    global composite, worker_no
+    if worker_no == 1:  # Only in worker
+        composite.on_reference(market, tradeday, data)
 ```
+
+**Reference**: `/home/wolverine/bin/running/calculator3.py` for data structure
 
 ## calculator3_test.py CLI
 

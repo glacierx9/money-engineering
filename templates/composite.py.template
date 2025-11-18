@@ -207,7 +207,7 @@ composite = {{NAME}}()
 async def on_init():
     """Initialize composite strategy"""
     global composite, imports, metas, worker_no
-    if worker_no == 1 and metas and imports:
+    if worker_no != 0 and metas and imports:  # All workers except coordinator
         composite.initialize_imported_strategies(imports, metas)
         composite.load_def_from_dict(metas)
 

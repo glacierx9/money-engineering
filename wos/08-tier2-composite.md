@@ -428,9 +428,26 @@ Routing works: basket.on_bar() called → basket.price updated
 - `basket.target_instrument = b'i2501'` (actual contract) ✓
 - Market data routing works ✓
 
-**Rolling Trigger**: Called automatically by `on_tradeday_begin()` based on volume or open interest.
+**target_instrument Selection Methods** (in `on_tradeday_begin()`):
 
-**Reference**: `/home/wolverine/bin/running/strategyc3.py` lines 549-626 (on_reference), lines 705-747 (rolling logic)
+| Method | Criteria | Use Case |
+|--------|----------|----------|
+| By open interest | Copy leading contract from Singularity data | Default for most commodities |
+| By trading volume | Calculate most-traded contract from daily volume | When volume better indicates liquidity |
+
+**Rolling Process**:
+1. Detect contract change: `new_target != current_target_instrument`
+2. Block all signals (trading disabled during roll)
+3. Close position in old contract
+4. Update `target_instrument = new_target`
+5. Open position in new contract
+6. Unblock signals (trading resumed)
+
+**Critical**: Signals blocked during rolling to prevent trading in transition state.
+
+**Reference**: `/home/wolverine/bin/running/strategyc3.py`:
+- Lines 549-626: `on_reference()` (contract info processing)
+- Lines 705-747: Rolling logic (position transfer)
 
 ---
 

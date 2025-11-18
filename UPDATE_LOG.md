@@ -605,7 +605,96 @@ async def on_reference(market, tradeday, data, timetag, timestring):
 
 ---
 
-**Next Correction**: Will be documented here with complete details per REQUIREMENT_WRITING_GUIDE.md Section 9.3
+## Correction 3: Multi-Worker Architecture and Callbacks (2025-11-18)
+
+**Source**: organic/fix002.md
+**Severity**: HIGH - Affects multi-worker mode, strategies, and callback implementation
+
+### Issues Fixed
+
+| Issue | Impact |
+|-------|--------|
+| worker_no pattern undocumented | Multi-worker parallelism unclear |
+| Logic contracts (<00>, <01>, <N>) undocumented | Contract abstraction unclear |
+| on_reference() purpose unclear | Strategies missing critical callback |
+| target_instrument selection methods undocumented | Rolling mechanism unclear |
+| Bar routing patterns missing | sv_object instance design unclear |
+| worker_no check incorrect in templates | `worker_no == 1` should be `worker_no != 0` in on_init |
+
+### Corrections Applied
+
+#### Chapter 3: Multi-Worker Architecture
+
+**Added sections**:
+- Multi-Worker Architecture (worker_no pattern, map-reduce parallelism)
+- Logic Contracts (<00> leading, <01> nearest, <N> N-th nearest)
+- Enhanced on_reference() (Singularity/Reference data, contract mappings)
+- Enhanced on_tradeday_begin/end (target_instrument selection, rolling)
+
+**worker_no pattern table**:
+
+| worker_no | Role | Responsibilities |
+|-----------|------|------------------|
+| 0 | Coordinator (reduce) | Aggregate results; optional on_reduce() |
+| 1...N | Workers (map) | Actual bar processing |
+
+**Logic contract table**:
+
+| Contract | Meaning | Selection |
+|----------|---------|-----------|
+| <00> | Leading contract | Highest volume/OI |
+| <01> | Nearest to expire | 1st by expiration |
+| <N> | N-th nearest | N-th by expiration |
+
+#### Chapter 7: Bar Routing Patterns
+
+**Added section**: Bar Routing Patterns (3 patterns)
+
+| Pattern | Use Case | Instance Scope | Example |
+|---------|----------|---------------|---------|
+| Logic contract (<00>) | Commodity indicators | One per commodity | `b'cu<00>'` |
+| Real contract | Contract resamplers | One per contract | `b'cu2501'` |
+| Placeholder/aggregation | Cross-commodity indices | One for aggregate | `b'rb<00>'` (index) |
+
+#### Chapter 8: Rolling Mechanism
+
+**Enhanced**:
+- target_instrument selection methods (by OI vs by volume)
+- Rolling process (6 steps, signals blocked during roll)
+
+#### Templates: worker_no Fix
+
+**Fixed in all 3 templates** (indicator.py, composite.py, strategy.py):
+
+```python
+# WRONG (old):
+if worker_no == 1 and metas:  # Only worker 1
+
+# CORRECT (new):
+if worker_no != 0 and metas:  # All workers except coordinator
+```
+
+### Files Updated
+
+- wos/03-programming-basics-and-cli.md: +80 lines (worker_no, logic contracts, callbacks)
+- wos/07-tier1-indicator.md: +85 lines (bar routing patterns)
+- wos/08-tier2-composite.md: +15 lines (rolling mechanism details)
+- templates/indicator.py.template: worker_no fix (line 245)
+- templates/composite.py.template: worker_no fix (line 210)
+- templates/strategy.py.template: worker_no fix (line 51)
+
+### Impact
+
+**Severity**: HIGH
+
+**Multi-worker correctness**:
+- Before: Only worker 1 initialized (incorrect for multi-worker mode)
+- After: All workers 1...N initialize (correct map-reduce pattern)
+
+**Documentation completeness**:
+- Added missing concepts: logic contracts, bar routing, rolling
+- All callback purposes now documented
+- Reference data flow clarified
 
 ---
 ---

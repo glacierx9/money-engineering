@@ -460,6 +460,91 @@ class GoodManager:
         return results
 ```
 
+## Bar Routing Patterns
+
+**Best practice**: One sv_object instance per (market, code, granularity) tuple
+
+### Pattern 1: Logic Contract (<00>) - Indicators
+
+**Use case**: Commodity indicators outputting per logical contract
+
+**Code pattern**: Use `<00>` for commodity, create one instance per commodity
+
+```python
+class CommodityIndicator(pcts3.sv_object):
+    def __init__(self, commodity: bytes, market: bytes):
+        super().__init__()
+        self.market = market
+        self.code = commodity + b'<00>'  # Logic contract
+
+    def on_bar(self, bar):
+        code = bar.get_stock_code()
+
+        # Filter for this commodity's <00> contract only
+        if (bar.get_market() == self.market and
+            code == self.code):
+            # Process this commodity's leading contract
+            process(bar)
+```
+
+**Output**: Single StructValue per commodity using `<00>` code
+
+### Pattern 2: Real Contract - Resamplers
+
+**Use case**: Per-contract processing (e.g., ZampleQuote resampling)
+
+**Code pattern**: Create instance for each real or logic contract
+
+```python
+class ContractResampler(pcts3.sv_object):
+    def __init__(self, market: bytes, code: bytes):
+        super().__init__()
+        self.market = market
+        self.code = code  # Exact contract (e.g., b'cu2501' or b'cu<01>')
+
+    def on_bar(self, bar):
+        # Route by exact market + code match
+        if (bar.get_market() == self.market and
+            bar.get_stock_code() == self.code):
+            # Process this specific contract
+            resample(bar)
+```
+
+**Output**: StructValue per contract with actual contract code
+
+### Pattern 3: Placeholder/Aggregation - Indices
+
+**Use case**: Cross-commodity aggregations (e.g., sector indices)
+
+**Code pattern**: Use commodity code as placeholder for aggregate
+
+```python
+class SectorIndex(pcts3.sv_object):
+    def __init__(self):
+        super().__init__()
+        # Placeholder code for index output
+        self.market = b'SHFE'
+        self.code = b'rb<00>'  # Not actually rebar - just placeholder
+
+    def on_bar(self, bar):
+        # Aggregate across multiple commodities
+        for commodity in [b'rb', b'hc', b'i']:  # Black minerals
+            if bar.get_stock_code().startswith(commodity):
+                update_index(bar)
+```
+
+**Output**: Single aggregate StructValue using placeholder code
+
+### Routing Pattern Summary
+
+| Use Case | Instance Scope | Code Pattern | Example |
+|----------|---------------|--------------|---------|
+| Commodity indicators | One per commodity | `commodity + b'<00>'` | `b'cu<00>'` |
+| Contract resamplers | One per contract | Exact contract code | `b'cu2501'`, `b'cu<01>'` |
+| Cross-commodity aggregation | One for aggregate | Placeholder code | `b'rb<00>'` (for index) |
+
+**Critical**: Match instance granularity to routing need to avoid state contamination.
+
 ## Cycle Boundary Handling
 
 **CRITICAL**: Data leakage prevention pattern. Import data updates happen AFTER `_on_cycle_pass()`.

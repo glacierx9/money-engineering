@@ -48,7 +48,7 @@ strategy = {{NAME}}()
 
 async def on_init():
     global strategy, metas, worker_no
-    if worker_no == 1 and metas:
+    if worker_no != 0 and metas:  # All workers except coordinator
         strategy.load_def_from_dict(metas)
 
 

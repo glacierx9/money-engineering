@@ -242,7 +242,7 @@ indicator = {{NAME}}()
 async def on_init():
     """Initialize indicator with schemas"""
     global indicator, imports, metas, worker_no
-    if worker_no == 1 and metas and imports:
+    if worker_no != 0 and metas and imports:  # All workers except coordinator
         indicator.initialize(imports, metas)
 
 
