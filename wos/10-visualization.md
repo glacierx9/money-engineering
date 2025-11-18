@@ -32,7 +32,19 @@ Visualization fetches calculated StructValues from server to analyze indicator b
 
 **time_tag Format**: Unix timestamp in milliseconds (e.g., `1672761600000`)
 
-**Usage Note**: Use `time_tag` directly for time-series x-axis - automatically skips weekends/holidays.
+**CRITICAL - Time Axis Handling**:
+- ❌ **WRONG**: Don't use `time_tag` directly as x-axis (includes weekends/non-trading hours)
+- ✅ **CORRECT**: Use **sequence index** as x-axis, convert `time_tag` to datetime for tick labels only
+
+```python
+# WRONG - includes gaps
+plt.plot(df['time_tag'], df['ema_fast'])  # ❌
+
+# CORRECT - continuous x-axis
+df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
+plt.plot(range(len(df)), df['ema_fast'])  # Use sequence index
+plt.xticks(range(0, len(df), 100), df['datetime'][::100])  # Labels from datetime
+```
 
 ### StructValue Indexing
 
@@ -141,6 +153,29 @@ if __name__ == '__main__':
 
     asyncio.run(main())
 ```
+
+### Async Pattern Tolerance
+
+**Issue**: Interactive mode (VS Code/Cursor notebooks) calls `await main()` directly, causing linter warnings.
+
+**Solution**: Handle both regular and interactive modes:
+
+```python
+async def main():
+    """Main visualization workflow"""
+    fetcher = IndicatorFetcher("YOUR_TOKEN")
+    data = await fetcher.connect_and_fetch("SHFE", "cu<00>")
+    # ... process data ...
+
+if __name__ == '__main__':
+    # Try regular mode first, fall back to interactive
+    try:
+        asyncio.run(main())  # Regular Python interpreter
+    except RuntimeError:
+        await main()  # Interactive mode (notebooks)
+```
+
+**Note**: Linter may complain about top-level `await` - this is expected and safe to ignore in interactive mode.
 
 ### Pattern 2: Single Connection, Multiple Fetches (Recommended)
 
@@ -394,15 +429,28 @@ if __name__ == "__main__":
 
 ```python
 def plot_time_series(df):
-    """Plot all indicator values over time (x-axis skips weekends/holidays)."""
+    """Plot all indicator values over time.
+
+    CRITICAL: Use sequence index as x-axis, datetime for tick labels only.
+    """
     fields = ['ema_fast', 'ema_slow', 'tsi', 'vai', 'mdi']
+
+    # Convert time_tag to datetime for labels
+    df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
 
     fig, axes = plt.subplots(len(fields), 1, figsize=(15, 3*len(fields)))
 
     for i, field in enumerate(fields):
-        axes[i].plot(df['datetime'], df[field])
+        # Use sequence index for continuous x-axis
+        axes[i].plot(range(len(df)), df[field])
         axes[i].set_title(f'{field.upper()}')
         axes[i].grid(True)
+
+        # Set datetime labels at regular intervals
+        step = max(1, len(df) // 10)  # ~10 labels
+        indices = range(0, len(df), step)
+        axes[i].set_xticks(indices)
+        axes[i].set_xticklabels([df['datetime'].iloc[idx].strftime('%Y-%m-%d') for idx in indices], rotation=45)
 
     plt.tight_layout()
     plt.savefig('time_series.png', dpi=150)
@@ -426,7 +474,13 @@ def analyze_correlations(df):
 
 ```python
 def analyze_signal_performance(df):
-    """Analyze signal performance (x-axis skips weekends/holidays)."""
+    """Analyze signal performance.
+
+    CRITICAL: Use sequence index as x-axis, datetime for tick labels.
+    """
+    # Convert time_tag to datetime for labels
+    df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
+
     # Calculate returns
     df['returns'] = df['close'].pct_change()
 
@@ -437,13 +491,226 @@ def analyze_signal_performance(df):
     cumulative = (1 + df['signal_returns']).cumprod()
 
     plt.figure(figsize=(12, 6))
-    plt.plot(df['datetime'], cumulative)
+    # Use sequence index for continuous x-axis
+    plt.plot(range(len(df)), cumulative)
+
+    # Set datetime labels at regular intervals
+    step = max(1, len(df) // 10)  # ~10 labels
+    indices = range(0, len(df), step)
+    plt.xticks(indices, [df['datetime'].iloc[idx].strftime('%Y-%m-%d') for idx in indices], rotation=45)
+
     plt.title('Cumulative Strategy Returns')
     plt.xlabel('Time')
     plt.ylabel('Cumulative Return')
     plt.grid(True)
+    plt.tight_layout()
     plt.savefig('performance.png', dpi=150)
 ```
+
+## Essential Visualizations for Tier-1/Tier-2 Strategies
+
+### Time Range Splits
+
+**Purpose**: Evaluate strategy performance across different periods
+
+**Split ratios**: 70% training, 20% validation, 10% testing
+
+```python
+def split_time_ranges(df):
+    """Split data into training, validation, and testing periods."""
+    n = len(df)
+
+    # Calculate split points
+    train_end = int(0.7 * n)
+    val_end = train_end + int(0.2 * n)
+
+    # Split data
+    train_df = df.iloc[:train_end]
+    val_df = df.iloc[train_end:val_end]
+    test_df = df.iloc[val_end:]
+
+    print(f"Training: {len(train_df)} bars ({df['datetime'].iloc[0]} to {df['datetime'].iloc[train_end-1]})")
+    print(f"Validation: {len(val_df)} bars ({df['datetime'].iloc[train_end]} to {df['datetime'].iloc[val_end-1]})")
+    print(f"Testing: {len(test_df)} bars ({df['datetime'].iloc[val_end]} to {df['datetime'].iloc[-1]})")
+
+    return {
+        'train': train_df,
+        'validation': val_df,
+        'test': test_df
+    }
+```
+
+### 1. NxM Grid: Time-Series Snapshot
+
+**Purpose**: Demonstrate past X frames of data at arbitrary time T
+
+**Use case**: Verify indicator calculations at specific points in time
+
+```python
+def plot_nxm_grid(df, time_index, lookback=100, fields=None):
+    """Plot NxM grid of indicator fields for past lookback bars.
+
+    Args:
+        df: DataFrame with indicator data
+        time_index: Index position to snapshot (e.g., len(df)//2)
+        lookback: Number of bars to show
+        fields: List of fields to plot (auto-detect if None)
+    """
+    if fields is None:
+        # Auto-detect numeric fields (exclude metadata)
+        exclude = {'time_tag', 'granularity', 'market', 'code', 'namespace', 'datetime'}
+        fields = [col for col in df.columns if col not in exclude and pd.api.types.is_numeric_dtype(df[col])]
+
+    # Extract snapshot window
+    end_idx = time_index
+    start_idx = max(0, end_idx - lookback)
+    snapshot = df.iloc[start_idx:end_idx]
+
+    # Calculate grid dimensions
+    n_fields = len(fields)
+    n_cols = 3  # 3 columns
+    n_rows = (n_fields + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 4*n_rows))
+    axes = axes.flatten() if n_rows > 1 else [axes]
+
+    for i, field in enumerate(fields):
+        # Plot using sequence index (continuous)
+        x = range(len(snapshot))
+        axes[i].plot(x, snapshot[field], linewidth=1.5)
+        axes[i].set_title(f'{field}')
+        axes[i].grid(True, alpha=0.3)
+        axes[i].set_xlabel(f'Bars before T={time_index}')
+
+        # Add current value annotation
+        current_val = snapshot[field].iloc[-1]
+        axes[i].axhline(current_val, color='r', linestyle='--', alpha=0.5)
+        axes[i].text(0.02, 0.98, f'Current: {current_val:.4f}',
+                    transform=axes[i].transAxes, va='top', bbox=dict(boxstyle='round', facecolor='wheat'))
+
+    # Hide extra subplots
+    for i in range(n_fields, len(axes)):
+        axes[i].axis('off')
+
+    plt.suptitle(f'Indicator Snapshot at T={time_index} ({snapshot["datetime"].iloc[-1].strftime("%Y-%m-%d %H:%M")})')
+    plt.tight_layout()
+    plt.savefig(f'snapshot_T{time_index}.png', dpi=150)
+    print(f"Saved: snapshot_T{time_index}.png")
+```
+
+### 2. Statistical Metrics Comparison
+
+**Purpose**: Compare performance metrics across training/validation/testing periods
+
+**Use case**: Verify Tier-1 indicator correctness by comparing with Tier-2 strategy results
+
+```python
+def calculate_metrics(df):
+    """Calculate performance metrics from PV (portfolio value)."""
+    # Assumes df has 'pv' column from strategy output
+
+    # Returns
+    returns = df['pv'].pct_change().dropna()
+
+    # Metrics
+    metrics = {
+        'Total Return': (df['pv'].iloc[-1] / df['pv'].iloc[0] - 1) * 100,
+        'Annualized Return': returns.mean() * 252 * 100,  # Assuming daily data
+        'Volatility': returns.std() * np.sqrt(252) * 100,
+        'Sharpe Ratio': (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0,
+        'Max Drawdown': ((df['pv'] / df['pv'].cummax()) - 1).min() * 100,
+        'Win Rate': (returns > 0).sum() / len(returns) * 100,
+        'Avg Win': returns[returns > 0].mean() * 100 if (returns > 0).any() else 0,
+        'Avg Loss': returns[returns < 0].mean() * 100 if (returns < 0).any() else 0,
+    }
+
+    return metrics
+
+def compare_periods(splits):
+    """Compare metrics across training/validation/testing periods."""
+    results = {}
+
+    for period_name, df in splits.items():
+        if 'pv' in df.columns:
+            results[period_name] = calculate_metrics(df)
+
+    # Create comparison table
+    comparison_df = pd.DataFrame(results).T
+    print("\n=== Performance Metrics Comparison ===")
+    print(comparison_df.round(2))
+
+    # Plot comparison
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    # 1. Portfolio Value over time
+    for period_name, df in splits.items():
+        if 'pv' in df.columns:
+            # Use sequence index for continuous plot across periods
+            offset = sum(len(splits[p]) for p in ['train', 'validation'] if p in splits and list(splits.keys()).index(p) < list(splits.keys()).index(period_name))
+            x = range(offset, offset + len(df))
+            axes[0, 0].plot(x, df['pv'], label=period_name.capitalize())
+
+    axes[0, 0].set_title('Portfolio Value Over Time')
+    axes[0, 0].set_xlabel('Bar Index')
+    axes[0, 0].set_ylabel('PV')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True)
+
+    # 2. Sharpe Ratio comparison
+    periods = list(results.keys())
+    sharpe_values = [results[p]['Sharpe Ratio'] for p in periods]
+    axes[0, 1].bar(periods, sharpe_values, color=['green', 'orange', 'red'])
+    axes[0, 1].set_title('Sharpe Ratio by Period')
+    axes[0, 1].set_ylabel('Sharpe Ratio')
+    axes[0, 1].grid(True, axis='y')
+
+    # 3. Max Drawdown comparison
+    dd_values = [results[p]['Max Drawdown'] for p in periods]
+    axes[1, 0].bar(periods, dd_values, color=['green', 'orange', 'red'])
+    axes[1, 0].set_title('Max Drawdown by Period (%)')
+    axes[1, 0].set_ylabel('Max Drawdown (%)')
+    axes[1, 0].grid(True, axis='y')
+
+    # 4. Win Rate comparison
+    wr_values = [results[p]['Win Rate'] for p in periods]
+    axes[1, 1].bar(periods, wr_values, color=['green', 'orange', 'red'])
+    axes[1, 1].set_title('Win Rate by Period (%)')
+    axes[1, 1].set_ylabel('Win Rate (%)')
+    axes[1, 1].axhline(50, color='black', linestyle='--', alpha=0.5)
+    axes[1, 1].grid(True, axis='y')
+
+    plt.tight_layout()
+    plt.savefig('period_comparison.png', dpi=150)
+    print("Saved: period_comparison.png")
+
+    return comparison_df
+
+# Complete workflow
+def analyze_strategy_performance(df):
+    """Complete analysis workflow with train/val/test splits."""
+    # Convert time_tag to datetime
+    df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
+
+    # Split into periods
+    splits = split_time_ranges(df)
+
+    # Compare metrics
+    metrics_df = compare_periods(splits)
+
+    # Generate snapshot at validation period start
+    val_start_idx = int(0.7 * len(df))
+    plot_nxm_grid(df, val_start_idx, lookback=100)
+
+    return metrics_df
+```
+
+**Key Use Cases**:
+
+| Visualization | Purpose | Validates |
+|---------------|---------|-----------|
+| **NxM Grid** | Snapshot indicator state at time T | Calculations correct at specific points |
+| **Period Comparison** | Metrics across train/val/test | Strategy generalizes (not overfitting) |
+| **Tier-1 vs Tier-2** | Compare indicator signals with strategy PV | Tier-1 indicators drive Tier-2 correctly |
 
 ## Parameter Analysis
 
@@ -623,7 +890,6 @@ df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')  # Only market hours
 - matplotlib/seaborn: Plotting
 - asyncio: Async execution
 
-**Reference**: See MargaritaComposite/margarita_composite_viz.py for working Tier-2 example
 
 **Next**: Iterative optimization workflow.
 

@@ -697,6 +697,96 @@ if worker_no != 0 and metas:  # All workers except coordinator
 - Reference data flow clarified
 
 ---
+
+## Correction 4: Visualization Time Handling and Analysis Patterns (2025-11-18)
+
+**Source**: organic/fix003.md
+**Severity**: MEDIUM - Affects visualization correctness and analysis patterns
+
+### Issues Fixed
+
+| Issue | Impact |
+|-------|--------|
+| time_tag used directly as x-axis | Includes weekends/non-trading hours (discontinuous plots) |
+| No async pattern tolerance | Linter warnings in interactive mode (notebooks) |
+| Missing time range splits | No train/validation/test evaluation pattern |
+| Missing essential visualizations | No NxM grid or statistical metrics comparison |
+
+### Corrections Applied
+
+#### Time Axis Handling (CRITICAL)
+
+**OLD (incorrect)**:
+```python
+plt.plot(df['time_tag'], df['ema_fast'])  # ❌ Includes gaps
+```
+
+**NEW (correct)**:
+```python
+# Use sequence index for continuous x-axis
+plt.plot(range(len(df)), df['ema_fast'])
+# Use datetime for tick labels only
+step = len(df) // 10
+indices = range(0, len(df), step)
+plt.xticks(indices, [df['datetime'].iloc[idx].strftime('%Y-%m-%d') for idx in indices])
+```
+
+**Reason**: time_tag includes weekends/holidays → discontinuous plots with gaps
+
+#### Async Pattern Tolerance
+
+**Added pattern**:
+```python
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())  # Regular mode
+    except RuntimeError:
+        await main()  # Interactive mode (notebooks)
+```
+
+#### Time Range Splits (70/20/10)
+
+**Added**:
+- `split_time_ranges()`: Split data into train (70%), validation (20%), test (10%)
+- Used for evaluating strategy generalization
+
+#### Essential Visualizations
+
+**Added** (from organic/fix003.md requirements):
+
+| Visualization | Purpose | Use Case |
+|---------------|---------|----------|
+| **NxM Grid** | Snapshot past X frames at time T | Verify calculations at specific points |
+| **Statistical Metrics** | Compare train/val/test performance | Validate no overfitting |
+| **Period Comparison** | Sharpe, drawdown, win rate across periods | Cross-period analysis |
+
+### Files Updated
+
+- wos/10-visualization.md: +200 lines
+  - Fixed time_tag handling (sequence index pattern)
+  - Added async pattern tolerance
+  - Added time range splits (70/20/10)
+  - Added NxM grid visualization
+  - Added statistical metrics comparison
+  - Updated all plot functions (3 functions fixed)
+
+### Impact
+
+**Severity**: MEDIUM
+
+**Visualization correctness**:
+- Before: Plots had gaps for weekends/holidays (confusing)
+- After: Continuous plots with datetime labels (correct)
+
+**Analysis completeness**:
+- Before: No train/val/test splits, no essential visualizations
+- After: Complete analysis workflow with period comparison
+
+**Interactive mode support**:
+- Before: Linter warnings with top-level await
+- After: Graceful handling of both modes
+
+---
 ---
 
 # PART 2: Version History
