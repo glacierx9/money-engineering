@@ -796,6 +796,76 @@ if __name__ == '__main__':
 - After: Graceful handling of both modes
 
 ---
+
+## Correction 5: Interactive Mode Markdown Comment Documentation (2025-11-18)
+
+**User Request**: "Keep visualization compatible with interactive mode's pattern of using comment embedding markdown text"
+
+**Severity**: LOW - Documentation enhancement for better UX
+
+### Enhancement Added
+
+**New section in Chapter 10**: Interactive Mode Markdown Comments
+
+| Feature | Description |
+|---------|-------------|
+| **Markdown rendering** | VS Code/Cursor renders `# %% [markdown]` comments as rich text |
+| **Cell markers** | `# %%` for code cells, `# %% [markdown]` for documentation |
+| **Syntax support** | Headings, bold, italic, lists, tables, links, code |
+| **Best practices** | Progressive disclosure, context, findings documentation |
+| **Compatibility** | Works in both interactive and regular modes |
+
+**Purpose**: Enable users to create self-documenting analysis scripts with rich formatting that renders beautifully in interactive mode while remaining compatible with regular Python execution.
+
+### Documentation Added
+
+**Chapter 10 - Visualization** (~125 lines):
+- Markdown syntax support table (8 elements)
+- Best practices (5 guidelines)
+- Complete analysis structure example (~50 lines)
+- Interactive vs Regular mode comparison table
+- Example workflow with markdown comments
+
+**Template Enhancement** (indicator_viz.py.template):
+- Enhanced main dashboard header with bold and lists
+- Added configuration section with warning emoji
+- Enhanced time series section with numbered steps
+- **NEW**: Observations template section with:
+  - TODO placeholder for user findings
+  - Example observations (trend, volatility, anomalies, signal quality)
+  - Next steps checklist
+
+### Files Updated
+
+- wos/10-visualization.md: +125 lines
+  - New section: Interactive Mode Markdown Comments (after Async Pattern Tolerance)
+  - Markdown syntax table and best practices
+  - Complete example with analysis workflow
+  - Mode comparison table
+
+- templates/indicator_viz.py.template: ~30 lines modified
+  - Enhanced 4 markdown comment sections with rich formatting
+  - Added observations template section
+  - Demonstrates bold, italic, lists, emoji, numbered steps
+
+### Impact
+
+**Severity**: LOW
+
+**User Experience**:
+- Before: Basic markdown comments, unclear best practices
+- After: Rich documentation examples, clear template for findings
+
+**Learning Curve**:
+- Before: Users had to discover markdown comment patterns independently
+- After: Explicit documentation and working examples in template
+
+**Code Quality**:
+- Self-documenting analysis scripts
+- Better knowledge transfer (notebooks serve as reports)
+- Professional presentation of findings
+
+---
 ---
 
 # PART 2: Version History

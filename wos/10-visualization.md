@@ -177,6 +177,129 @@ if __name__ == '__main__':
 
 **Note**: Linter may complain about top-level `await` - this is expected and safe to ignore in interactive mode.
 
+### Interactive Mode Markdown Comments
+
+**Feature**: VS Code/Cursor interactive window renders markdown-formatted comments as rich text.
+
+**Purpose**: Create readable analysis reports with headings, emphasis, lists, and tables directly in code.
+
+**Pattern**: Use `# %%` cell markers with markdown comments:
+
+```python
+# %% [markdown]
+# # Data Analysis Report
+# **Indicator**: MyIndicator
+# **Period**: 2023-01-03 to 2023-05-10
+#
+# ## Key Metrics
+# - Total bars: 5000
+# - Coverage: 98.5%
+
+# %% Fetch data
+import pandas as pd
+data = await fetcher.connect_and_fetch("SHFE", "cu<00>")
+df = pd.DataFrame(data)
+
+# %% [markdown]
+# ## Data Summary
+# The following table shows basic statistics:
+
+# %% Display statistics
+print(df.describe())
+
+# %% [markdown]
+# ### Observations
+# 1. Mean value indicates stable trend
+# 2. Low volatility in recent period
+# 3. **Action**: Consider tightening threshold parameters
+```
+
+**Markdown Syntax Support**:
+
+| Element | Syntax | Rendered Output |
+|---------|--------|-----------------|
+| Heading 1 | `# Title` | Large heading |
+| Heading 2 | `## Section` | Medium heading |
+| Heading 3 | `### Subsection` | Small heading |
+| Bold | `**text**` | **Bold text** |
+| Italic | `*text*` | *Italic text* |
+| List | `- item` or `1. item` | Bulleted/numbered list |
+| Code | `` `code` `` | Inline code |
+| Link | `[text](url)` | Clickable link |
+
+**Best Practices**:
+
+1. **Structure sections**: Use `# %%` to separate code cells, `# %% [markdown]` for documentation
+2. **Add context**: Explain what each analysis step does and why
+3. **Highlight findings**: Use **bold** for important insights, *italic* for notes
+4. **Tables for comparisons**: Use markdown tables for metric comparisons
+5. **Progressive disclosure**: Start with summary, drill down to details
+
+**Example: Complete Analysis Structure**:
+
+```python
+# %% [markdown]
+# # MyIndicator Performance Analysis
+# **Date**: 2025-11-18
+# **Objective**: Evaluate signal quality and parameter sensitivity
+
+# %% Setup
+import asyncio
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import svr3
+
+# %% [markdown]
+# ## 1. Data Fetch
+# Retrieving data for **SHFE/cu<00>** from 2023-01-03 to 2023-05-10
+
+# %% Fetch
+fetcher = IndicatorFetcher("YOUR_TOKEN")
+data = await fetcher.connect_and_fetch("SHFE", "cu<00>")
+df = pd.DataFrame(data)
+df['datetime'] = pd.to_datetime(df['time_tag'], unit='ms')
+
+# %% [markdown]
+# **Result**: Fetched ${len(df)} bars
+
+# %% [markdown]
+# ## 2. Time Series Visualization
+# Using sequence index for continuous x-axis (avoids weekend gaps)
+
+# %% Plot
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.plot(range(len(df)), df['ema_fast'], label='EMA Fast')
+ax.plot(range(len(df)), df['ema_slow'], label='EMA Slow')
+ax.legend()
+ax.set_title('Indicator Signals - cu<00>')
+plt.show()
+
+# %% [markdown]
+# ### Key Observations
+# - **Crossovers**: 23 buy signals, 21 sell signals
+# - **Signal lag**: ~3 bars average
+# - **Noise level**: Moderate (consider smoothing)
+#
+# **Next steps**: Test with different EMA periods
+
+# %% Cleanup
+try:
+    asyncio.run(cleanup())
+except RuntimeError:
+    await cleanup()
+```
+
+**Interactive vs Regular Mode**:
+
+| Mode | File Type | Markdown Rendering | Execution |
+|------|-----------|-------------------|-----------|
+| **Interactive** | `.py` in VS Code | ✅ Rendered in output pane | Cell-by-cell (`# %%`) |
+| **Regular** | `.py` script | ❌ Comments only | Top-to-bottom |
+| **Notebook** | `.ipynb` | ✅ Markdown cells | Cell-by-cell |
+
+**Compatibility**: Markdown comments are regular Python comments, so code runs identically in both modes - interactive mode just adds visual enhancement.
+
 ### Pattern 2: Single Connection, Multiple Fetches (Recommended)
 
 **Use Case**: Fetch multiple market/instrument pairs efficiently by reusing connection.

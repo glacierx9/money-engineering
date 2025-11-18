@@ -22,7 +22,13 @@ Reference: Chapter 10 - Visualization
 # %% [markdown]
 # # {{NAME}} Indicator Analytics Dashboard
 #
-# Fetches and analyzes {{NAME}} indicator data from server
+# **Purpose**: Fetch and analyze {{NAME}} indicator data from server
+#
+# **Features**:
+# - Async data retrieval using svr3 module
+# - Time series visualization (continuous x-axis)
+# - Statistical analysis across time periods
+# - Performance metrics comparison
 
 # %%
 # Core imports
@@ -48,7 +54,11 @@ print("📊 {{NAME}} Indicator Dashboard Initialized")
 # %% [markdown]
 # ## Configuration
 #
-# Server connection and date range settings
+# **Server Settings**: Backend API and WebSocket endpoints
+#
+# **Date Range**: YYYYMMDDHHmmss format
+#
+# ⚠️ **Important**: Replace `YOUR_TOKEN_HERE` with your actual access token
 
 # %%
 # Server configuration
@@ -273,7 +283,12 @@ if not df.empty:
 # %% [markdown]
 # ## Time Series Visualization
 #
-# Plot indicator values over time
+# **Method**: Uses sequence index for continuous x-axis (avoids weekend/holiday gaps)
+#
+# **Approach**:
+# 1. Plot data using `range(len(df))` as x-axis
+# 2. Convert `time_tag` to datetime for tick labels only
+# 3. Auto-detect numeric fields from DataFrame
 
 # %%
 def plot_time_series(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
@@ -336,6 +351,22 @@ def plot_time_series(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
 # Plot time series for available fields
 if not df.empty and fetcher.available_fields:
     plot_time_series(df, fetcher.available_fields, max_plots=6)
+
+# %% [markdown]
+# ### Observations
+#
+# **TODO**: Document your findings here
+#
+# *Example observations*:
+# - **Trend**: Indicator shows clear upward trend from mid-period
+# - **Volatility**: Higher volatility in first 30% of data
+# - **Anomalies**: Spike detected around [date] - investigate market event
+# - **Signal quality**: Crossovers appear clean with minimal noise
+#
+# **Next steps**:
+# 1. Investigate correlation with price movement
+# 2. Test parameter sensitivity
+# 3. Evaluate performance metrics
 
 # %% [markdown]
 # ## Distribution Analysis
