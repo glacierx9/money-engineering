@@ -255,10 +255,11 @@ async def fetch_indicator_data():
         raise
 
 # Fetch data (compatible with interactive and regular modes)
+# Reference: organic/fix003.md - async pattern tolerance
 try:
     # Interactive mode (VS Code/Cursor notebooks)
     fetcher, df = await fetch_indicator_data()
-except SyntaxError:
+except (SyntaxError, RuntimeError):
     # Regular mode (Python interpreter)
     async def main():
         return await fetch_indicator_data()
@@ -278,6 +279,9 @@ if not df.empty:
 def plot_time_series(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
     """
     Plot time series for specified fields
+
+    CRITICAL: Uses sequence index as x-axis (continuous), datetime for tick labels only.
+    Reference: organic/fix003.md - time_tag handling
 
     Args:
         df: DataFrame with indicator data
@@ -304,7 +308,17 @@ def plot_time_series(df: pd.DataFrame, fields: List[str], max_plots: int = 6):
         axes = [axes]
 
     for idx, field in enumerate(plot_fields):
-        axes[idx].plot(df['datetime'], df[field], linewidth=1.5, alpha=0.8)
+        # CRITICAL: Use sequence index for continuous x-axis (no gaps for weekends)
+        x = range(len(df))
+        axes[idx].plot(x, df[field], linewidth=1.5, alpha=0.8)
+
+        # Set datetime labels at regular intervals
+        step = max(1, len(df) // 10)  # ~10 labels
+        tick_indices = range(0, len(df), step)
+        axes[idx].set_xticks(tick_indices)
+        axes[idx].set_xticklabels([df['datetime'].iloc[i].strftime('%Y-%m-%d') for i in tick_indices],
+                                   rotation=45, ha='right')
+
         axes[idx].set_xlabel('Date')
         axes[idx].set_ylabel(field)
         axes[idx].set_title(f'{{NAME}} - {field} Over Time')
@@ -458,6 +472,260 @@ if not df.empty and len(fetcher.available_fields) >= 2:
     plot_correlation_matrix(df, fetcher.available_fields)
 
 # %% [markdown]
+# ## Time Range Splits (Train/Validation/Test)
+#
+# Split data into periods for performance evaluation
+# Reference: organic/fix003.md
+
+# %%
+def split_time_ranges(df: pd.DataFrame):
+    """
+    Split data into training (70%), validation (20%), and testing (10%) periods
+
+    Args:
+        df: DataFrame with indicator data
+
+    Returns:
+        Dict with 'train', 'validation', 'test' DataFrames
+    """
+    if df.empty:
+        return {}
+
+    n = len(df)
+
+    # Calculate split points
+    train_end = int(0.7 * n)
+    val_end = train_end + int(0.2 * n)
+
+    # Split data
+    splits = {
+        'train': df.iloc[:train_end].copy(),
+        'validation': df.iloc[train_end:val_end].copy(),
+        'test': df.iloc[val_end:].copy()
+    }
+
+    print("\n" + "="*60)
+    print("📊 Time Range Splits:")
+    print("="*60)
+
+    for name, data in splits.items():
+        if not data.empty and 'datetime' in data.columns:
+            print(f"{name.capitalize():12s}: {len(data):>5d} bars | " +
+                  f"{data['datetime'].iloc[0].strftime('%Y-%m-%d')} to " +
+                  f"{data['datetime'].iloc[-1].strftime('%Y-%m-%d')}")
+
+    return splits
+
+# Split data into periods
+splits = split_time_ranges(df) if not df.empty else {}
+
+# %% [markdown]
+# ## NxM Grid: Time-Series Snapshot
+#
+# Visualize past X frames at arbitrary time T
+# Reference: organic/fix003.md
+
+# %%
+def plot_nxm_grid(df: pd.DataFrame, time_index: int, lookback: int = 100, fields: Optional[List[str]] = None):
+    """
+    Plot NxM grid of indicator fields for past lookback bars
+
+    CRITICAL: Uses sequence index for continuous x-axis
+    Reference: organic/fix003.md - NxM grid pattern
+
+    Args:
+        df: DataFrame with indicator data
+        time_index: Index position to snapshot (e.g., len(df)//2)
+        lookback: Number of bars to show
+        fields: List of fields to plot (auto-detect if None)
+    """
+    if df.empty or time_index >= len(df):
+        print("⚠ Invalid data or time_index")
+        return
+
+    if fields is None:
+        # Auto-detect numeric fields (exclude metadata)
+        exclude = {'time_tag', 'granularity', 'market', 'code', 'namespace', 'datetime', 'bar_index'}
+        fields = [col for col in df.columns
+                  if col not in exclude and pd.api.types.is_numeric_dtype(df[col])]
+
+    if not fields:
+        print("⚠ No numeric fields available for plotting")
+        return
+
+    # Extract snapshot window
+    end_idx = time_index
+    start_idx = max(0, end_idx - lookback)
+    snapshot = df.iloc[start_idx:end_idx].copy()
+
+    # Calculate grid dimensions (3 columns)
+    n_fields = len(fields)
+    n_cols = 3
+    n_rows = (n_fields + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 4*n_rows))
+    axes = axes.flatten() if n_rows > 1 else [axes] if n_rows == 1 else []
+
+    for i, field in enumerate(fields):
+        # CRITICAL: Plot using sequence index (continuous)
+        x = range(len(snapshot))
+        axes[i].plot(x, snapshot[field], linewidth=1.5)
+        axes[i].set_title(f'{field}', fontsize=10)
+        axes[i].grid(True, alpha=0.3)
+        axes[i].set_xlabel(f'Bars before T={time_index}', fontsize=8)
+
+        # Add current value annotation
+        current_val = snapshot[field].iloc[-1]
+        axes[i].axhline(current_val, color='r', linestyle='--', alpha=0.5)
+        axes[i].text(0.02, 0.98, f'Current: {current_val:.4f}',
+                    transform=axes[i].transAxes, va='top', fontsize=8,
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    # Hide extra subplots
+    for i in range(n_fields, len(axes)):
+        axes[i].axis('off')
+
+    if 'datetime' in snapshot.columns:
+        time_str = snapshot['datetime'].iloc[-1].strftime('%Y-%m-%d %H:%M')
+        plt.suptitle(f'{{NAME}} Snapshot at T={time_index} ({time_str})', fontsize=14)
+    else:
+        plt.suptitle(f'{{NAME}} Snapshot at T={time_index}', fontsize=14)
+
+    plt.tight_layout()
+    plt.savefig(f'{{NAME}}_snapshot_T{time_index}_{START_DATE}_{END_DATE}.png', dpi=150, bbox_inches='tight')
+    print(f"✓ Saved: {{NAME}}_snapshot_T{time_index}_{START_DATE}_{END_DATE}.png")
+    plt.show()
+
+# Generate snapshot at mid-point
+if not df.empty and len(df) > 100:
+    snapshot_idx = len(df) // 2
+    plot_nxm_grid(df, snapshot_idx, lookback=100)
+
+# %% [markdown]
+# ## Statistical Metrics Comparison (for strategies with PV)
+#
+# Compare performance metrics across train/val/test periods
+# Reference: organic/fix003.md
+
+# %%
+def calculate_metrics(df: pd.DataFrame):
+    """
+    Calculate performance metrics from PV (portfolio value)
+
+    Args:
+        df: DataFrame with 'pv' column
+
+    Returns:
+        Dict of performance metrics
+    """
+    if df.empty or 'pv' not in df.columns:
+        return None
+
+    # Returns
+    returns = df['pv'].pct_change().dropna()
+
+    if len(returns) == 0:
+        return None
+
+    # Calculate metrics
+    metrics = {
+        'Total Return (%)': (df['pv'].iloc[-1] / df['pv'].iloc[0] - 1) * 100,
+        'Annualized Return (%)': returns.mean() * 252 * 100,
+        'Volatility (%)': returns.std() * np.sqrt(252) * 100,
+        'Sharpe Ratio': (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0,
+        'Max Drawdown (%)': ((df['pv'] / df['pv'].cummax()) - 1).min() * 100,
+        'Win Rate (%)': (returns > 0).sum() / len(returns) * 100,
+        'Avg Win (%)': returns[returns > 0].mean() * 100 if (returns > 0).any() else 0,
+        'Avg Loss (%)': returns[returns < 0].mean() * 100 if (returns < 0).any() else 0,
+    }
+
+    return metrics
+
+def compare_periods(splits: Dict):
+    """
+    Compare metrics across training/validation/testing periods
+
+    Args:
+        splits: Dict with 'train', 'validation', 'test' DataFrames
+
+    Returns:
+        DataFrame with comparison
+    """
+    if not splits:
+        print("⚠ No period splits available")
+        return None
+
+    results = {}
+
+    for period_name, period_df in splits.items():
+        metrics = calculate_metrics(period_df)
+        if metrics:
+            results[period_name] = metrics
+
+    if not results:
+        print("⚠ No PV data available for metrics calculation")
+        print("   (This is expected for Tier-1 indicators - metrics are for Tier-2 strategies)")
+        return None
+
+    # Create comparison DataFrame
+    comparison_df = pd.DataFrame(results).T
+
+    print("\n" + "="*80)
+    print("📊 Performance Metrics Comparison:")
+    print("="*80)
+    print(comparison_df.round(2))
+
+    # Plot comparison
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    periods = list(results.keys())
+
+    # 1. Sharpe Ratio comparison
+    sharpe_values = [results[p]['Sharpe Ratio'] for p in periods]
+    axes[0, 0].bar(periods, sharpe_values, color=['green', 'orange', 'red'])
+    axes[0, 0].set_title('Sharpe Ratio by Period')
+    axes[0, 0].set_ylabel('Sharpe Ratio')
+    axes[0, 0].grid(True, axis='y', alpha=0.3)
+
+    # 2. Max Drawdown comparison
+    dd_values = [results[p]['Max Drawdown (%)'] for p in periods]
+    axes[0, 1].bar(periods, dd_values, color=['green', 'orange', 'red'])
+    axes[0, 1].set_title('Max Drawdown by Period (%)')
+    axes[0, 1].set_ylabel('Max Drawdown (%)')
+    axes[0, 1].grid(True, axis='y', alpha=0.3)
+
+    # 3. Win Rate comparison
+    wr_values = [results[p]['Win Rate (%)'] for p in periods]
+    axes[1, 0].bar(periods, wr_values, color=['green', 'orange', 'red'])
+    axes[1, 0].set_title('Win Rate by Period (%)')
+    axes[1, 0].set_ylabel('Win Rate (%)')
+    axes[1, 0].axhline(50, color='black', linestyle='--', alpha=0.5, label='50% baseline')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, axis='y', alpha=0.3)
+
+    # 4. Total Return comparison
+    tr_values = [results[p]['Total Return (%)'] for p in periods]
+    axes[1, 1].bar(periods, tr_values, color=['green', 'orange', 'red'])
+    axes[1, 1].set_title('Total Return by Period (%)')
+    axes[1, 1].set_ylabel('Total Return (%)')
+    axes[1, 1].axhline(0, color='black', linestyle='-', alpha=0.3)
+    axes[1, 1].grid(True, axis='y', alpha=0.3)
+
+    plt.suptitle(f'{{NAME}} - Period Performance Comparison', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(f'{{NAME}}_period_comparison_{START_DATE}_{END_DATE}.png', dpi=150, bbox_inches='tight')
+    print(f"\n✓ Saved: {{NAME}}_period_comparison_{START_DATE}_{END_DATE}.png")
+    plt.show()
+
+    return comparison_df
+
+# Compare periods (if PV data available)
+if splits and 'pv' in df.columns:
+    metrics_df = compare_periods(splits)
+else:
+    print("\n💡 Period comparison skipped (no 'pv' field - this is normal for Tier-1 indicators)")
+
+# %% [markdown]
 # ## Cleanup
 #
 # Close server connection
@@ -470,7 +738,7 @@ async def cleanup():
 # Cleanup (compatible with both modes)
 try:
     await cleanup()
-except SyntaxError:
+except (SyntaxError, RuntimeError):
     asyncio.run(cleanup())
 
 print("\n✅ Visualization complete!")
@@ -478,8 +746,13 @@ print(f"\nGenerated files:")
 print(f"  - {{NAME}}_time_series_{START_DATE}_{END_DATE}.png")
 print(f"  - {{NAME}}_distributions_{START_DATE}_{END_DATE}.png")
 print(f"  - {{NAME}}_correlation_{START_DATE}_{END_DATE}.png")
+if not df.empty and len(df) > 100:
+    print(f"  - {{NAME}}_snapshot_T{len(df)//2}_{START_DATE}_{END_DATE}.png")
+if 'pv' in df.columns:
+    print(f"  - {{NAME}}_period_comparison_{START_DATE}_{END_DATE}.png")
 print("\nNext steps:")
 print("  1. Review the generated plots")
-print("  2. Customize analysis based on your indicator's specific fields")
-print("  3. Add custom metrics and performance analysis")
-print("  4. Adjust date ranges and commodities as needed")
+print("  2. For Tier-2 strategies: Analyze period comparison for overfitting")
+print("  3. Use NxM grid to verify calculations at specific time points")
+print("  4. Customize analysis based on your indicator's specific fields")
+print("  5. Adjust date ranges and commodities as needed")

@@ -770,6 +770,15 @@ if __name__ == '__main__':
   - Added statistical metrics comparison
   - Updated all plot functions (3 functions fixed)
 
+- templates/indicator_viz.py.template: ~300 lines modified
+  - Fixed async pattern tolerance (SyntaxError + RuntimeError)
+  - Fixed plot_time_series(): Use sequence index for continuous x-axis
+  - Added split_time_ranges() (70/20/10 splits)
+  - Added plot_nxm_grid() (auto-detects fields, 3-column layout)
+  - Added calculate_metrics() (8 performance metrics)
+  - Added compare_periods() (4-panel visualization + comparison table)
+  - Updated cleanup section with async pattern
+
 ### Impact
 
 **Severity**: MEDIUM
