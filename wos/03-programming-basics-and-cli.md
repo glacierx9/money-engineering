@@ -457,8 +457,8 @@ async def on_bar(bar: pc.StructValue):
     """
     global strategy, worker_no
 
-    # Only process in worker 1
-    if worker_no != 1:
+    # Only process in non-coordinator worker
+    if worker_no == 0:
         return []
 
     # Process bar and return results

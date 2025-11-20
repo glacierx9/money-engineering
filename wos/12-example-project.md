@@ -84,54 +84,72 @@ class MeanReversionIndicator(pcts3.sv_object):
         self.signal = 0
         self.confidence = 0.0
         self.initialized = False
+        self.bars_since_start = 0
+        self.latest_sv = None
+        self.WARMUP_PERIOD = 80 # As per documentation example
 
         # Data parser
         self.quote = SampleQuote()
         self.persistent = True
 
-    def initialize(self, imports, metas):
-        self.load_def_from_dict(metas)
-        self.set_global_imports(imports)
-        self.quote.load_def_from_dict(metas)
-        self.quote.set_global_imports(imports)
+    def _rebuild_finished(self):
+        return self.bars_since_start >= self.WARMUP_PERIOD
 
-    def on_bar(self, bar: pc.StructValue):
-        market = bar.get_market()
-        code = bar.get_stock_code()
+    def _from_sv(self, sv):
+        # This will set all the fields that are marked as persistent
+        super().from_sv(sv)
 
-        if not (market == self.market and 
-                code.startswith(self.code[:-4]) and
-                code.endswith(b'<00>')):
-            return []
+    def _load_from_sv(self, sv):
+        temp = self.__class__(self.code[:-4].decode(), self.market)
+        # Copy metadata
+        temp.market = self.market
+        temp.code = self.code
+        temp.meta_id = self.meta_id
+        temp.granularity = self.granularity
+        temp.namespace = self.namespace
+        # Call PARENT's from_sv directly
+        super(self.__class__, temp).from_sv(sv)
+        return temp
 
-        if bar.get_namespace() == self.quote.namespace and \
-           bar.get_meta_id() == self.quote.meta_id:
-            self.quote.market = market
-            self.quote.code = code
-            self.quote.granularity = bar.get_granularity()
-            self.quote.from_sv(bar)
-        else:
-            return []
+    def _equal(self, other, tolerance=1e-9):
+        # Compare relevant fields for reconciliation
+        if not isinstance(other, MeanReversionIndicator):
+            return False
+        
+        # Compare numerical fields with tolerance
+        if not (math.isclose(self.rsi, other.rsi, rel_tol=tolerance) and
+                math.isclose(self.gain_ema, other.gain_ema, rel_tol=tolerance) and
+                math.isclose(self.loss_ema, other.loss_ema, rel_tol=tolerance) and
+                math.isclose(self.alpha, other.alpha, rel_tol=tolerance) and
+                math.isclose(self.prev_close, other.prev_close, rel_tol=tolerance) and
+                math.isclose(self.confidence, other.confidence, rel_tol=tolerance)):
+            return False
 
-        tm = bar.get_time_tag()
+        # Compare other fields directly
+        if not (self.bar_index == other.bar_index and
+                self.timetag == other.timetag and
+                self.signal == other.signal and
+                self.initialized == other.initialized):
+            return False
+            
+        return True
 
-        if self.timetag is None:
-            self.timetag = tm
+    def _reconcile_state(self):
+        if self.latest_sv is None:
+            # This should not happen if _reconcile_state is called correctly
+            logger.error(f"Reconciliation failed for {self.market}-{self.code}: latest_sv is None")
+            return
 
-        if self.timetag < tm:
-            self._on_cycle_pass()
+        saved_state = self._load_from_sv(self.latest_sv)
+        if not self._equal(saved_state):
+            logger.error(f"Reconciliation failed for {self.market}-{self.code} at timetag {self.timetag}: "
+                         f"Calculated: rsi={self.rsi}, gain_ema={self.gain_ema}, loss_ema={self.loss_ema}, "
+                         f"prev_close={self.prev_close}, signal={self.signal}, confidence={self.confidence}. "
+                         f"Saved: rsi={saved_state.rsi}, gain_ema={saved_state.gain_ema}, loss_ema={saved_state.loss_ema}, "
+                         f"prev_close={saved_state.prev_close}, signal={saved_state.signal}, confidence={saved_state.confidence}.")
+            raise AssertionError("State reconciliation failed.")
 
-            results = []
-            if self.bar_index > 0 and self.initialized:
-                results.append(self.copy_to_sv())
-
-            self.timetag = tm
-            self.bar_index += 1
-            return results
-
-        return []
-
-    def _on_cycle_pass(self):
+    def calculate_state(self):
         close = float(self.quote.close)
 
         if not self.initialized:
@@ -166,29 +184,72 @@ class MeanReversionIndicator(pcts3.sv_object):
 
         self.prev_close = close
 
-# Manager for multiple commodities
-class IndicatorManager:
-    def __init__(self):
-        self.indicators = {}
-        commodities = {
-            b'SHFE': [b'cu', b'al', b'zn'],
-            b'DCE': [b'i', b'j']
-        }
-
-        for market, codes in commodities.items():
-            for code in codes:
-                key = (market, code)
-                self.indicators[key] = MeanReversionIndicator(code, market)
-
     def initialize(self, imports, metas):
-        for indicator in self.indicators.values():
-            indicator.initialize(imports, metas)
+        self.load_def_from_dict(metas)
+        self.set_global_imports(imports)
+        self.quote.load_def_from_dict(metas)
+        self.quote.set_global_imports(imports)
 
-    def on_bar(self, bar):
-        results = []
-        for indicator in self.indicators.values():
-            results.extend(indicator.on_bar(bar))
-        return results
+    def on_bar(self, bar: pc.StructValue):
+        # 1. Extract bar info
+        market = bar.get_market()
+        code = bar.get_stock_code()
+        granularity = bar.get_granularity()
+        tm = bar.get_time_tag()
+        
+
+        ret = [] # Initialize results list
+
+        
+        # 2. Initialize timetag if None and granularity matches
+        if self.granularity == granularity and self.timetag is None:
+            self.timetag = tm
+
+        # 3. Check timetag advancement (CRITICAL: granularity match)
+        if self.granularity == granularity and self.timetag is not None and self.timetag < tm:
+            # 3a. Calculate frame with OLD data
+            self.calculate_state()
+
+            # 3b. Reconcile (after rebuilding finished)
+            if self.latest_sv is not None and self._rebuild_finished():
+                self._reconcile_state()
+
+            # 3c. Restore state (during rebuilding)
+            # The 'overwrite' global is typically used in the runner to force state overwrite
+            # This part assumes 'overwrite' is a global or passed in a similar fashion.
+            # For this example, we'll assume it's a global variable as seen in the original file.
+            if not self._rebuild_finished() and self.latest_sv is not None:
+                self._from_sv(self.latest_sv)
+
+            # 3d. Output if ready
+            if self._rebuild_finished(): # Only output after warm-up
+                ret.append(self.copy_to_sv())
+
+            # 3e. Update state (AFTER all processing for the current cycle)
+            self.latest_sv = None # Clear cached latest_sv after use
+            self.timetag = tm
+            self.bar_index += 1  # Persisted counter
+            self.bars_since_start += 1  # Non-persisted counter
+            self.initialized = self._rebuild_finished() # Update initialized flag based on warm-up
+
+        # 4. Import data (AFTER cycle pass and state updates)
+        # This caches the incoming bar data into self.quote for the NEXT calculation cycle.
+        if bar.get_namespace() == self.quote.namespace and \
+           bar.get_meta_id() == self.quote.meta_id and \
+           bar.get_market() == self.market and \
+           bar.get_stock_code().startswith(self.code[:-4]) and \
+           bar.get_stock_code().endswith(b'<00>') and \
+           bar.get_granularity() == self.granularity:
+            self.quote.from_sv(bar)
+        
+        # If it's a saved state SV, cache it
+        if bar.get_namespace() == self.namespace and \
+           bar.get_meta_id() == self.meta_id and \
+            bar.get_stock_code() == self.code and \
+            bar.get_granularity() == self.granularity and \
+            bar.get_market() == self.market:
+            self.latest_sv = bar
+        return ret
 
 manager = IndicatorManager()
 
